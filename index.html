@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CalcPlot3D – Clone</title>
+    <link rel="stylesheet" href="styles.css" />
+    <!-- Usaremos módulos ES para Three.js y OrbitControls desde main.js -->
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@11.11.0/lib/browser/math.js"></script>
+    <!-- Renderizado LaTeX para mostrar las funciones como en el ejemplo -->
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <h1>CalcPlot3D – Clone</h1>
+        <section class="panel">
+          <h2>Función</h2>
+          <label for="fnSelect">Selecciona una fórmula</label>
+          <select id="fnSelect"></select>
+          <label for="fnInput">z = f(x, y)</label>
+          <input id="fnInput" type="text" placeholder="7*x*y / exp(x^2 + y^2)" />
+          <div id="texDisplay" class="tex-display" aria-live="polite"></div>
+          <div class="grid">
+            <div>
+              <label for="viewMode">Vista</label>
+              <select id="viewMode">
+                <option value="3D" selected>3D</option>
+                <option value="2D">2D (curvas de nivel)</option>
+              </select>
+            </div>
+            <div>
+              <label for="contourLevels">Curvas</label>
+              <input id="contourLevels" type="range" min="5" max="40" step="1" value="12" />
+              <span id="contourLevelsLabel">12</span>
+            </div>
+            <div>
+              <label for="contourWidth">Grosor</label>
+              <input id="contourWidth" type="range" min="0.5" max="3" step="0.1" value="1" />
+              <span id="contourWidthLabel">1.0</span>
+            </div>
+            <div>
+              <label for="contourColor">Color</label>
+              <select id="contourColor">
+                <option value="red" selected>Rojo</option>
+                <option value="blue">Azul</option>
+                <option value="green">Verde</option>
+              </select>
+            </div>
+            <div>
+              <label for="contourGradient">Degradado</label>
+              <input id="contourGradient" type="checkbox" />
+            </div>
+            <div>
+              <label for="useFixedColor">Usar color fijo</label>
+              <input id="useFixedColor" type="checkbox" checked />
+            </div>
+            <div>
+              <label for="useCustomWidth">Grosor personalizado</label>
+              <input id="useCustomWidth" type="checkbox" checked />
+            </div>
+          </div>
+          <button id="save2DBtn" style="display:none">Guardar imagen 2D</button>
+          <div class="row">
+            <label for="resolution">Resolución</label>
+            <input id="resolution" type="range" min="20" max="150" step="5" value="60" />
+            <span id="resolutionLabel">60</span>
+          </div>
+          <button id="addGraphBtn">Añadir a la gráfica</button>
+        </section>
+
+        <section class="panel">
+          <h2>Axes</h2>
+          <div class="grid">
+            <div>
+              <label for="xmin">x-min</label>
+              <input id="xmin" type="number" step="0.1" value="-3" />
+            </div>
+            <div>
+              <label for="xmax">x-max</label>
+              <input id="xmax" type="number" step="0.1" value="3" />
+            </div>
+            <div>
+              <label for="ymin">y-min</label>
+              <input id="ymin" type="number" step="0.1" value="-3" />
+            </div>
+            <div>
+              <label for="ymax">y-max</label>
+              <input id="ymax" type="number" step="0.1" value="3" />
+            </div>
+            <div>
+              <label for="zmin">z-min</label>
+              <input id="zmin" type="number" step="0.1" value="-2" />
+            </div>
+            <div>
+              <label for="zmax">z-max</label>
+              <input id="zmax" type="number" step="0.1" value="2" />
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="zclipLow">lower z-clip</label>
+              <input id="zclipLow" type="number" step="0.1" placeholder="(opcional)" />
+            </div>
+            <div>
+              <label for="zclipHigh">upper z-clip</label>
+              <input id="zclipHigh" type="number" step="0.1" placeholder="(opcional)" />
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="clipToBox">Recortar a caja 3D</label>
+              <input id="clipToBox" type="checkbox" />
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="showGrid3D">Mostrar cuadrícula 3D</label>
+              <input id="showGrid3D" type="checkbox" checked />
+            </div>
+            <div>
+              <label for="showAxes3D">Mostrar ejes 3D</label>
+              <input id="showAxes3D" type="checkbox" checked />
+            </div>
+          </div>
+          <button id="applyAxesBtn">Aplicar límites</button>
+        </section>
+
+        <section class="panel">
+          <h2>Gráficas</h2>
+          <ul id="graphsList" class="list"></ul>
+          <div class="row">
+            <button id="clearAllBtn" class="danger">Limpiar todo</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Opciones</h2>
+          <div class="row">
+            <button id="resetOptionsBtn">Restablecer opciones</button>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="zoom3D">Zoom cámara 3D</label>
+              <input id="zoom3D" type="range" min="25" max="85" step="1" />
+              <span id="zoom3DLabel">45°</span>
+            </div>
+            <div>
+              <button id="fitView3DBtn">Ajustar vista al cubo</button>
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="graphScale3D">Escala de gráfica 3D</label>
+              <input id="graphScale3D" type="range" min="0.1" max="2.0" step="0.05" value="1" />
+              <span id="graphScale3DLabel">1.00×</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Cálculos</h2>
+          <div class="grid">
+            <div>
+              <label for="calcX0">x₀</label>
+              <input id="calcX0" type="number" step="0.1" value="0" />
+            </div>
+            <div>
+              <label for="calcY0">y₀</label>
+              <input id="calcY0" type="number" step="0.1" value="0" />
+            </div>
+            <div>
+              <label for="showGradient">Mostrar gradiente en 2D</label>
+              <input id="showGradient" type="checkbox" />
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="showGradient3D">Mostrar gradiente en 3D</label>
+              <input id="showGradient3D" type="checkbox" />
+            </div>
+            <div>
+              <label for="gradientScale">Escala flecha</label>
+              <input id="gradientScale" type="range" min="0.05" max="0.5" step="0.05" value="0.2" />
+              <span id="gradientScaleLabel">0.20</span>
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="calcEnabled">Habilitar cálculos automáticos</label>
+              <input id="calcEnabled" type="checkbox" checked />
+            </div>
+          </div>
+          <div id="calcDomainRange" class="calc-block"></div>
+          <div id="calcDerivatives" class="calc-block"></div>
+          <hr />
+          <h3>Integrales</h3>
+          <div class="grid">
+            <div>
+              <label for="integralRes">Resolución integral</label>
+              <input id="integralRes" type="range" min="20" max="120" step="10" value="60" />
+              <span id="integralResLabel">60</span>
+            </div>
+            <div>
+              <label for="rhoInput">Densidad ρ(x,y)</label>
+              <input id="rhoInput" type="text" placeholder="1" />
+            </div>
+          </div>
+          <div class="row">
+            <button id="computeDoubleIntegralBtn">Calcular ∬ f(x,y) dA</button>
+            <button id="computeCentroidBtn">Centro de masa (ρ)</button>
+            <button id="computeVolumeBtn">Volumen bajo superficie (z=0)</button>
+          </div>
+          <div id="calcIntegrals" class="calc-block"></div>
+          <hr />
+          <h3>Optimización (Lagrange)</h3>
+          <div class="grid">
+            <div>
+              <label for="constraintInput">Restricción g(x,y)=0</label>
+              <input id="constraintInput" type="text" placeholder="x + y - 1" />
+            </div>
+            <div>
+              <label for="optimX0">x₀</label>
+              <input id="optimX0" type="number" step="0.1" value="0" />
+            </div>
+            <div>
+              <label for="optimY0">y₀</label>
+              <input id="optimY0" type="number" step="0.1" value="0" />
+            </div>
+          </div>
+          <div class="row">
+            <button id="solveLagrangeBtn">Resolver por multiplicadores de Lagrange</button>
+          </div>
+          <div id="calcOptimization" class="calc-block"></div>
+        </section>
+      </aside>
+
+      <main id="main">
+        <div id="canvasContainer"></div>
+        <div id="contourContainer"><canvas id="contourCanvas"></canvas></div>
+      </main>
+    </div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+  </html>
