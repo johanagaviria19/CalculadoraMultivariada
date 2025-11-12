@@ -9,7 +9,10 @@ let axesGroup = null;
 let plotBoxHelper = null;
 let viewMode = '3D';
 let gradientArrow3D = null;
+<<<<<<< HEAD
 // Grupo para campo de gradiente en 3D (múltiples flechas)
+=======
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
 let gradientField3DGroup = null;
 
 /* Presets */
@@ -408,6 +411,54 @@ function drawContours2D({ exprString, axes, resolution, levelsCount, lineWidth, 
     }
   }
 
+  // Campo de gradiente (quiver) opcional
+  if (gradientField && gradientField.enabled) {
+    const qN = gradientField.density || Math.min(12, Math.max(6, Math.round(resolution / 5)));
+    const hBase = 1e-3 * Math.max(xmax - xmin, ymax - ymin);
+    const h = Math.max(1e-5, hBase);
+    const scale = (typeof gradientField.scale === 'number') ? gradientField.scale : 0.15;
+    for (let jy = 0; jy < qN; jy++) {
+      const y = ymin + (jy + 0.5) * (ymax - ymin) / qN;
+      for (let ix = 0; ix < qN; ix++) {
+        const x = xmin + (ix + 0.5) * (xmax - xmin) / qN;
+        let f0, f_xph, f_xmh, f_yph, f_ymh;
+        try { f0 = compiled.evaluate({ x, y }); f_xph = compiled.evaluate({ x: x + h, y }); f_xmh = compiled.evaluate({ x: x - h, y }); f_yph = compiled.evaluate({ x, y: y + h }); f_ymh = compiled.evaluate({ x, y: y - h }); } catch (_) { continue; }
+        if (!isFinite(f_xph) || !isFinite(f_xmh) || !isFinite(f_yph) || !isFinite(f_ymh) || !isFinite(f0)) continue;
+        const fx = (f_xph - f_xmh) / (2 * h);
+        const fy = (f_yph - f_ymh) / (2 * h);
+        const norm = Math.hypot(fx, fy);
+        if (!(isFinite(norm) && norm > 0)) continue;
+        const arrowLen = Math.max(1e-6, scale) * Math.min(xmax - xmin, ymax - ymin);
+        const dx = (fx / norm) * arrowLen;
+        const dy = (fy / norm) * arrowLen;
+        const x0 = x, y0 = y;
+        const x1 = x + dx, y1 = y + dy;
+        // Cuerpo
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = Math.max(1, (lineWidth || 1)) * ratio;
+        ctx.beginPath();
+        ctx.moveTo(x2px(x0), y2px(y0));
+        ctx.lineTo(x2px(x1), y2px(y1));
+        ctx.stroke();
+        // Cabeza
+        const angle = Math.atan2(y1 - y0, x1 - x0);
+        const headLen = 9 * ratio;
+        const a1 = angle + Math.PI - Math.PI / 6;
+        const a2 = angle + Math.PI + Math.PI / 6;
+        const hx1 = x1 + (headLen / ratio) * Math.cos(a1) * (xmax - xmin) / plotW;
+        const hy1 = y1 + (headLen / ratio) * Math.sin(a1) * (ymax - ymin) / plotH;
+        const hx2 = x1 + (headLen / ratio) * Math.cos(a2) * (xmax - xmin) / plotW;
+        const hy2 = y1 + (headLen / ratio) * Math.sin(a2) * (ymax - ymin) / plotH;
+        ctx.beginPath();
+        ctx.moveTo(x2px(x1), y2px(y1));
+        ctx.lineTo(x2px(hx1), y2px(hy1));
+        ctx.moveTo(x2px(x1), y2px(y1));
+        ctx.lineTo(x2px(hx2), y2px(hy2));
+        ctx.stroke();
+      }
+    }
+  }
+
   // Etiquetas de ejes
   ctx.fillStyle = '#000000';
   ctx.font = `${14 * ratio}px Arial`;
@@ -424,7 +475,8 @@ function updateAxesHelpers() {
   const sizeX = currentAxes.xmax - currentAxes.xmin;
   const sizeY = currentAxes.ymax - currentAxes.ymin;
   const sizeZ = currentAxes.zmax - currentAxes.zmin;
-  const size = Math.max(sizeX, sizeY);
+  // Evitar tamaños cero que hacen invisibles los helpers cuando el usuario pone ejes iguales
+  const size = Math.max(sizeX, sizeY, 1);
 
   // Plano XY de referencia
   gridHelper = new THREE.GridHelper(size, 20, 0xffffff, 0xffffff);
@@ -686,9 +738,16 @@ function buildSurface({ exprString, resolution, axes, zclipLow, zclipHigh }) {
 let nextGraphId = 1;
 function addGraph(mesh, label) {
   const id = `g${nextGraphId++}`;
+<<<<<<< HEAD
   try {
     if (!mesh.userData) mesh.userData = {};
     mesh.userData.exprString = label; // almacenar la expresión para reconstruir
+=======
+  // Guardar la expresión original para poder reconstruir la geometría (p.ej., al cambiar resolución)
+  try {
+    mesh.userData = mesh.userData || {};
+    mesh.userData.exprString = label;
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
   } catch (_) {}
   graphs.set(id, mesh);
   scene.add(mesh);
@@ -762,6 +821,18 @@ function getAxesFromUI() {
   return { xmin, xmax, ymin, ymax, zmin, zmax };
 }
 
+// Punto de cálculo (x₀,y₀) con fallback al centro de la caja si la entrada está vacía/inválida
+function getCalcPointOrCenter() {
+  const axes = getAxesFromUI();
+  const xRaw = (document.getElementById('calcX0') || { value: '' }).value;
+  const yRaw = (document.getElementById('calcY0') || { value: '' }).value;
+  let x0 = parseFloat(xRaw);
+  let y0 = parseFloat(yRaw);
+  if (!isFinite(x0)) x0 = (axes.xmin + axes.xmax) / 2;
+  if (!isFinite(y0)) y0 = (axes.ymin + axes.ymax) / 2;
+  return { x0, y0 };
+}
+
 function getZClip() {
   const lowStr = document.getElementById('zclipLow').value;
   const highStr = document.getElementById('zclipHigh').value;
@@ -785,13 +856,19 @@ function fitViewToBox() {
   const sx = (axes.xmax - axes.xmin);
   const sy = (axes.ymax - axes.ymin);
   const sz = (axes.zmax - axes.zmin);
-  const radius = Math.sqrt(sx * sx + sy * sy + sz * sz) / 2;
+  let radius = Math.sqrt(sx * sx + sy * sy + sz * sz) / 2;
+  // Fallback para casos degenerados (ejes colapsados) que colocan la cámara en el mismo punto que el target
+  if (!isFinite(radius) || radius < 1e-3) radius = 1;
   const margin = 1.15; // pequeño margen para que se vea completo
   const fovRad = THREE.MathUtils.degToRad(camera.fov);
-  const dist = (margin * radius) / Math.tan(fovRad / 2);
+  const dist = (margin * radius) / Math.max(1e-6, Math.tan(fovRad / 2));
   const center = new THREE.Vector3(cx, cy, cz);
   const dir = new THREE.Vector3(1, 1, 1).normalize();
-  const pos = center.clone().add(dir.multiplyScalar(dist));
+  let pos = center.clone().add(dir.multiplyScalar(dist));
+  // Si por alguna razón la posición coincide con el target, desplazamos ligeramente para evitar vista en negro
+  if (pos.distanceTo(center) < 1e-6) {
+    pos = center.clone().add(new THREE.Vector3(1, 1, 1).normalize().multiplyScalar(2));
+  }
   camera.position.copy(pos);
   controls.target.copy(center);
   camera.updateProjectionMatrix();
@@ -860,12 +937,46 @@ function restoreOriginalZForGraphs() {
   });
 }
 
+// Reconstruye todas las superficies 3D con una nueva resolución, sin que el usuario tenga que recrearlas
+function updateResolutionForAllGraphs(newRes) {
+  if (viewMode !== '3D') return;
+  const axes = getAxesFromUI();
+  const { zclipLow, zclipHigh } = getZClip();
+  const gsEl = document.getElementById('graphScale3D');
+  const s = gsEl ? parseFloat(gsEl.value) : 1;
+  const entries = Array.from(graphs.entries());
+  entries.forEach(([id, oldGroup]) => {
+    const exprInputEl = document.getElementById('fnInput');
+    const fallbackExpr = exprInputEl ? exprInputEl.value : '7*x*y / exp(x^2 + y^2)';
+    const expr = (oldGroup && oldGroup.userData && oldGroup.userData.exprString) ? oldGroup.userData.exprString : fallbackExpr;
+    try {
+      const newGroup = buildSurface({ exprString: expr, resolution: newRes, axes, zclipLow, zclipHigh });
+      if (newGroup && newGroup.scale) newGroup.scale.set(s, s, s);
+      // Preservar transformaciones básicas
+      if (oldGroup && newGroup) {
+        newGroup.position.copy(oldGroup.position);
+        newGroup.rotation.copy(oldGroup.rotation);
+      }
+      // Mantener metadatos
+      try { newGroup.userData = newGroup.userData || {}; newGroup.userData.exprString = expr; } catch (_) {}
+      scene.remove(oldGroup);
+      scene.add(newGroup);
+      graphs.set(id, newGroup);
+    } catch (e) {
+      console.warn('No se pudo actualizar resolución para gráfica', id, e);
+    }
+  });
+  // Reaplicar recorte si está activo
+  applyClipToGraphs();
+}
+
 function wireUI() {
   const fnInput = document.getElementById('fnInput');
   const fnSelect = document.getElementById('fnSelect');
   const texDisplay = document.getElementById('texDisplay');
   const calcX0 = document.getElementById('calcX0');
   const calcY0 = document.getElementById('calcY0');
+  const calcUseCenter = document.getElementById('calcUseCenter');
   const showGradient2D = document.getElementById('showGradient');
   const showGradientField2D = document.getElementById('showGradientField2D');
   const gradientFieldDensity = document.getElementById('gradientFieldDensity');
@@ -927,7 +1038,14 @@ function wireUI() {
 
   const res = document.getElementById('resolution');
   const resLabel = document.getElementById('resolutionLabel');
-  res.addEventListener('input', () => { resLabel.textContent = res.value; });
+  res.addEventListener('input', () => {
+    resLabel.textContent = res.value;
+    // Si estamos en 3D, actualizar la resolución de las superficies ya existentes sin necesidad de recrearlas manualmente
+    if (viewMode === '3D') {
+      const newRes = parseInt(res.value, 10);
+      updateResolutionForAllGraphs(newRes);
+    }
+  });
 
   const viewSel = document.getElementById('viewMode');
   const contourLevels = document.getElementById('contourLevels');
@@ -1062,7 +1180,7 @@ function wireUI() {
     }
     const axes = getAxesFromUI();
     const resolution = parseInt(res.value, 10);
-    const raw = (fnInput.value && fnInput.value.trim().length > 0) ? fnInput.value.trim() : '7*x*y / exp(x^2 + y^2)';
+    const raw = getFnExprNormalized();
     let compiled;
     try {
       compiled = math.parse(raw).compile();
@@ -1074,6 +1192,7 @@ function wireUI() {
     }
     const domainInfo = buildDomainPredicateFromExpr(raw);
     const { xmin, xmax, ymin, ymax } = axes;
+    const clip = (typeof getZClip === 'function') ? getZClip() : {};
     const nx = Math.max(20, Math.min(80, resolution));
     const ny = nx;
     const dx = (xmax - xmin) / (nx - 1);
@@ -1096,7 +1215,9 @@ function wireUI() {
           // Validar con dominio matemático antes de evaluar
           if (!domainInfo.predicate(x, y, paramDefaults)) continue;
           const z = compiled.evaluate({ x, y, ...paramDefaults });
-          if (isFinite(z)) {
+          const withinClipLow = (typeof clip.zclipLow !== 'number') || (z >= clip.zclipLow);
+          const withinClipHigh = (typeof clip.zclipHigh !== 'number') || (z <= clip.zclipHigh);
+          if (isFinite(z) && withinClipLow && withinClipHigh) {
             valid++;
             zMin = Math.min(zMin, z);
             zMax = Math.max(zMax, z);
@@ -1115,14 +1236,30 @@ function wireUI() {
     if (calcDomainRange) {
       const zMinStr = isFinite(zMin) ? Number(zMin.toFixed(4)) : '—';
       const zMaxStr = isFinite(zMax) ? Number(zMax.toFixed(4)) : '—';
+<<<<<<< HEAD
       const consDesc = domainInfo.description ? `<div><strong>Restricciones (matemáticas):</strong> ${domainInfo.description}</div>` : '';
       calcDomainRange.innerHTML = `
         <div><strong>Dominio (muestrado):</strong> ${valid} / ${total} puntos válidos (${validPct}%)</div>
         ${consDesc}
+=======
+      const procDx = isFinite(dx) ? Number(dx.toFixed(4)) : '—';
+      const procDy = isFinite(dy) ? Number(dy.toFixed(4)) : '—';
+      const domText = `Rectángulo [${Number(xmin)}, ${Number(xmax)}] × [${Number(ymin)}, ${Number(ymax)}]`;
+      const resText = `${nx} × ${ny} (total ${total})`;
+      calcDomainRange.innerHTML = `
+        <div style="margin-bottom:6px"><strong>Procedimiento (muestreo):</strong></div>
+        <div>• Dominio: ${domText}</div>
+        <div>• Resolución: ${resText}</div>
+        <div>• Pasos: Δx = ${procDx}, Δy = ${procDy}</div>
+        <div>• Evaluación: f(x,y) en cada punto; se cuentan válidos si es finito</div>
+        <hr style="opacity:0.4;margin:8px 0" />
+        <div><strong>Dominio (muestreado):</strong> ${valid} / ${total} puntos válidos (${validPct}%)</div>
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
         <div><strong>Rango z aprox:</strong> [${zMinStr}, ${zMaxStr}]</div>
       `;
     }
 
+<<<<<<< HEAD
     // Auto-ajuste del dominio si la región válida es significativamente menor
     // Sólo si hay puntos válidos y el cálculo está habilitado
     if (valid > 0 && calcEnabled && calcEnabled.checked) {
@@ -1165,6 +1302,10 @@ function wireUI() {
     const useAuto = autoEl ? !!autoEl.checked : true;
     const x0 = useAuto ? bestX : parseLocaleNumber(calcX0 ? calcX0.value : '0', 0);
     const y0 = useAuto ? bestY : parseLocaleNumber(calcY0 ? calcY0.value : '0', 0);
+=======
+    // Derivadas parciales en (x₀,y₀) por diferencias finitas (con fallback al centro)
+    const { x0, y0 } = getCalcPointOrCenter();
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
     const hBase = 1e-3 * Math.max(xmax - xmin, ymax - ymin);
     const hScaleEl = document.getElementById('derivHScale');
     const hScale = hScaleEl ? parseFloat(hScaleEl.value) : 1;
@@ -1242,13 +1383,14 @@ function wireUI() {
     const ymin = axes.ymin, ymax = axes.ymax;
     const dx = (xmax - xmin) / (nx - 1);
     const dy = (ymax - ymin) / (ny - 1);
+    const paramDefaults = { a: 1, b: 1, c: 1, d: 0, t: 0, v: 1 };
     let sum = 0, valid = 0;
     for (let iy = 0; iy < ny; iy++) {
       const y = ymin + iy * dy;
       for (let ix = 0; ix < nx; ix++) {
         const x = xmin + ix * dx;
         let z;
-        try { z = fCompiled.evaluate({ x, y }); } catch (_) { z = NaN; }
+        try { z = fCompiled.evaluate({ x, y, ...paramDefaults }); } catch (_) { z = NaN; }
         if (!isFinite(z)) continue;
         sum += z * compositeWeights(ix, iy, nx, ny);
         valid++;
@@ -1266,13 +1408,14 @@ function wireUI() {
     const ymin = axes.ymin, ymax = axes.ymax;
     const dx = (xmax - xmin) / (nx - 1);
     const dy = (ymax - ymin) / (ny - 1);
+    const paramDefaults = { a: 1, b: 1, c: 1, d: 0, t: 0, v: 1 };
     let M = 0, Mx = 0, My = 0;
     for (let iy = 0; iy < ny; iy++) {
       const y = ymin + iy * dy;
       for (let ix = 0; ix < nx; ix++) {
         const x = xmin + ix * dx;
         let rho;
-        try { rho = rhoCompiled.evaluate({ x, y }); } catch (_) { rho = NaN; }
+        try { rho = rhoCompiled.evaluate({ x, y, ...paramDefaults }); } catch (_) { rho = NaN; }
         if (!isFinite(rho)) continue;
         const w = compositeWeights(ix, iy, nx, ny);
         M += rho * w;
@@ -1291,21 +1434,28 @@ function wireUI() {
   }
 
   function computeVolumeUnderSurface(options) {
-    const { fCompiled, axes, nx, ny } = options;
+    const { fCompiled, rhoCompiled = null, useRho = false, z0 = 0, axes, nx, ny } = options;
     const xmin = axes.xmin, xmax = axes.xmax;
     const ymin = axes.ymin, ymax = axes.ymax;
     const dx = (xmax - xmin) / (nx - 1);
     const dy = (ymax - ymin) / (ny - 1);
+    const clip = (typeof getZClip === 'function') ? getZClip() : {};
+    const paramDefaults = { a: 1, b: 1, c: 1, d: 0, t: 0, v: 1 };
     let sum = 0;
     for (let iy = 0; iy < ny; iy++) {
       const y = ymin + iy * dy;
       for (let ix = 0; ix < nx; ix++) {
         const x = xmin + ix * dx;
         let z;
-        try { z = fCompiled.evaluate({ x, y }); } catch (_) { z = NaN; }
+        try { z = fCompiled.evaluate({ x, y, ...paramDefaults }); } catch (_) { z = NaN; }
         if (!isFinite(z)) continue;
+        const withinClipLow = (typeof clip.zclipLow !== 'number') || (z >= clip.zclipLow);
+        const withinClipHigh = (typeof clip.zclipHigh !== 'number') || (z <= clip.zclipHigh);
+        if (!(withinClipLow && withinClipHigh)) continue;
         const w = compositeWeights(ix, iy, nx, ny);
-        sum += Math.max(0, z) * w; // volumen respecto a z=0
+        const rhoVal = (useRho && rhoCompiled) ? (() => { try { return rhoCompiled.evaluate({ x, y, ...paramDefaults }); } catch (_) { return NaN; } })() : 1;
+        if (useRho && !isFinite(rhoVal)) continue;
+        sum += Math.max(0, z - z0) * w * (useRho ? rhoVal : 1);
       }
     }
     const area = (xmax - xmin) * (ymax - ymin);
@@ -1331,14 +1481,17 @@ function wireUI() {
       const gy = (evalG(x, y + h) - evalG(x, y - h)) / (2 * h);
       return { gx, gy };
     }
-    function newtonStep(x, y, lambda, h) {
+    function residuals(x, y, lambda, h) {
       const { fx, fy } = gradF(x, y, h);
       const { gx, gy } = gradG(x, y, h);
       const r1 = fx - lambda * gx;
       const r2 = fy - lambda * gy;
       const r3 = evalG(x, y);
-      // Jacobiano aproximado
+      return { r1, r2, r3, fx, fy, gx, gy, norm: Math.hypot(r1, r2, r3) };
+    }
+    function newtonDelta(x, y, lambda, h, info) {
       const eps = h;
+      const { fx, fy, gx, gy } = info;
       const { fx: fx_xp, fy: fy_xp } = gradF(x + eps, y, h);
       const { fx: fx_yp, fy: fy_yp } = gradF(x, y + eps, h);
       const { gx: gx_xp, gy: gy_xp } = gradG(x + eps, y, h);
@@ -1351,15 +1504,12 @@ function wireUI() {
       const dgx_dy = (gx_yp - gx) / eps;
       const dgy_dx = (gy_xp - gy) / eps;
       const dgy_dy = (gy_yp - gy) / eps;
-      // J = [[dfx_dx - λ*dgx_dx, dfx_dy - λ*dgx_dy, -gx],
-      //      [dfy_dx - λ*dgy_dx, dfy_dy - λ*dgy_dy, -gy],
-      //      [gx,               gy,               0  ]]
       const J = [
         [dfx_dx - lambda * dgx_dx, dfx_dy - lambda * dgx_dy, -gx],
         [dfy_dx - lambda * dgy_dx, dfy_dy - lambda * dgy_dy, -gy],
         [gx, gy, 0],
       ];
-      const b = [-r1, -r2, -r3];
+      const b = [-info.r1, -info.r2, -info.r3];
       const delta = solveLinear3x3(J, b);
       return { dx: delta[0], dy: delta[1], dl: delta[2] };
     }
@@ -1385,11 +1535,41 @@ function wireUI() {
     }
     let x = x0, y = y0, lambda = 0;
     const h = 1e-3 * Math.max(1, Math.abs(x0) + Math.abs(y0));
+    // Proyección al conjunto factible g(x,y)=0 minimizando 0.5*g^2
+    for (let k = 0; k < 60; k++) {
+      const gcur = evalG(x, y);
+      if (!isFinite(gcur)) break;
+      if (Math.abs(gcur) < 1e-6) break;
+      const { gx, gy } = gradG(x, y, h);
+      let alpha = 1.0;
+      let accepted = false;
+      for (let ls = 0; ls < 8; ls++) {
+        const xn = x - alpha * gcur * gx;
+        const yn = y - alpha * gcur * gy;
+        const gnext = evalG(xn, yn);
+        if (isFinite(gnext) && Math.abs(gnext) < Math.abs(gcur)) { x = xn; y = yn; accepted = true; break; }
+        alpha *= 0.5;
+      }
+      if (!accepted) break;
+    }
+    // Newton KKT con amortiguación
     for (let iter = 0; iter < 25; iter++) {
-      const step = newtonStep(x, y, lambda, h);
-      x += step.dx; y += step.dy; lambda += step.dl;
-      const gval = evalG(x, y);
-      if (!isFinite(gval)) break;
+      const info = residuals(x, y, lambda, h);
+      const oldNorm = info.norm;
+      if (!isFinite(oldNorm)) break;
+      if (oldNorm < 1e-8) break;
+      const step = newtonDelta(x, y, lambda, h, info);
+      let alpha = 1.0;
+      let accepted = false;
+      for (let ls = 0; ls < 8; ls++) {
+        const xn = x + alpha * step.dx;
+        const yn = y + alpha * step.dy;
+        const ln = lambda + alpha * step.dl;
+        const next = residuals(xn, yn, ln, h);
+        if (isFinite(next.norm) && next.norm < oldNorm * 0.9) { x = xn; y = yn; lambda = ln; accepted = true; break; }
+        alpha *= 0.5;
+      }
+      if (!accepted) break;
       if (Math.hypot(step.dx, step.dy) < 1e-8) break;
     }
     const fval = evalF(x, y);
@@ -1423,7 +1603,11 @@ function wireUI() {
     }
     const lwEff = (useCustomWidth && useCustomWidth.checked) ? parseFloat(contourWidth.value) : 1;
     const colorEff = (useFixedColor && useFixedColor.checked) ? contourColor.value : 'gray';
+<<<<<<< HEAD
     drawContours2D({ exprString: fnInput.value, axes, resolution, levelsCount: parseInt(contourLevels.value, 10), lineWidth: lwEff, colorMode: colorEff, gradient: contourGradient.checked, gradientOverlay: overlay, gradientField: fieldCfg });
+=======
+    drawContours2D({ exprString: getFnExprNormalized(), axes, resolution, levelsCount: parseInt(contourLevels.value, 10), lineWidth: lwEff, colorMode: colorEff, gradient: contourGradient.checked, gradientOverlay: overlay });
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
   }
   viewSel.addEventListener('change', () => setView(viewSel.value));
 
@@ -1436,7 +1620,7 @@ function wireUI() {
     } else {
       const { zclipLow, zclipHigh } = getZClip();
       try {
-        const mesh = buildSurface({ exprString: fnInput.value, resolution, axes, zclipLow, zclipHigh });
+        const mesh = buildSurface({ exprString: getFnExprNormalized(), resolution, axes, zclipLow, zclipHigh });
         const gsEl = document.getElementById('graphScale3D');
         const s = gsEl ? parseFloat(gsEl.value) : 1;
         if (mesh && mesh.scale) mesh.scale.set(s, s, s);
@@ -1485,6 +1669,7 @@ function wireUI() {
   });
 
   // Eventos del panel Cálculos
+<<<<<<< HEAD
   if (calcX0) {
     calcX0.addEventListener('input', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
     calcX0.addEventListener('change', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
@@ -1493,6 +1678,33 @@ function wireUI() {
     calcY0.addEventListener('input', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
     calcY0.addEventListener('change', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
   }
+=======
+  if (calcX0) calcX0.addEventListener('input', () => { runCalculations(); if (viewMode === '2D') redraw2D(); });
+  if (calcY0) calcY0.addEventListener('input', () => { runCalculations(); if (viewMode === '2D') redraw2D(); });
+  // Botón para usar el centro de la caja
+  if (calcUseCenter) calcUseCenter.addEventListener('click', () => {
+    const axes = getAxesFromUI();
+    const cx = (axes.xmin + axes.xmax) / 2;
+    const cy = (axes.ymin + axes.ymax) / 2;
+    if (calcX0) calcX0.value = String(Number(cx.toFixed(6)));
+    if (calcY0) calcY0.value = String(Number(cy.toFixed(6)));
+    runCalculations();
+    if (viewMode === '2D') redraw2D(); else updateGradientArrow3D();
+  });
+  // Validación ligera: si queda vacío/inválido al perder foco, usar centro
+  const ensureValidCalcPoint = (el) => {
+    if (!el) return;
+    el.addEventListener('blur', () => {
+      const { x0, y0 } = getCalcPointOrCenter();
+      if (el === calcX0 && !isFinite(parseFloat(calcX0.value))) calcX0.value = String(Number(x0.toFixed(6)));
+      if (el === calcY0 && !isFinite(parseFloat(calcY0.value))) calcY0.value = String(Number(y0.toFixed(6)));
+      runCalculations();
+      if (viewMode === '2D') redraw2D(); else updateGradientArrow3D();
+    });
+  };
+  ensureValidCalcPoint(calcX0);
+  ensureValidCalcPoint(calcY0);
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
   if (showGradient2D) showGradient2D.addEventListener('change', () => { if (viewMode === '2D') redraw2D(); });
   if (showGradientField2D) showGradientField2D.addEventListener('change', () => { if (viewMode === '2D') redraw2D(); });
   if (gradientFieldDensity && gradientFieldDensityLabel) {
@@ -1534,15 +1746,24 @@ function wireUI() {
   const integralRes = document.getElementById('integralRes');
   const integralResLabel = document.getElementById('integralResLabel');
   const rhoInput = document.getElementById('rhoInput');
+  const volumeZ0Input = document.getElementById('volumeZ0Input');
+  const volumeUseRho = document.getElementById('volumeUseRho');
   const calcIntegrals = document.getElementById('calcIntegrals');
   const computeDoubleIntegralBtn = document.getElementById('computeDoubleIntegralBtn');
   const computeCentroidBtn = document.getElementById('computeCentroidBtn');
   const computeVolumeBtn = document.getElementById('computeVolumeBtn');
+  // Límites UI
+  const limitType = document.getElementById('limitType');
+  const limitSide = document.getElementById('limitSide');
+  const limitXTarget = document.getElementById('limitXTarget');
+  const limitYTarget = document.getElementById('limitYTarget');
+  const computeLimitsBtn = document.getElementById('computeLimitsBtn');
+  const calcLimits = document.getElementById('calcLimits');
   if (integralRes && integralResLabel) integralRes.addEventListener('input', () => { integralResLabel.textContent = integralRes.value; });
   function renderIntegralsHtml(html) { if (calcIntegrals) calcIntegrals.innerHTML = html; }
   function getIntegralResolution() { return parseInt(integralRes ? integralRes.value : '60', 10); }
   if (computeDoubleIntegralBtn) computeDoubleIntegralBtn.addEventListener('click', () => {
-    const f = compileFnOrFallback(fnInput.value, '7*x*y / exp(x^2 + y^2)');
+    const f = compileFnOrFallback(getFnExprNormalized(), '7*x*y / exp(x^2 + y^2)');
     if (!f) return renderIntegralsHtml('<strong>∬ f dA:</strong> Expresión inválida');
     const axes = getAxesFromUI();
     const n = getIntegralResolution();
@@ -1551,7 +1772,8 @@ function wireUI() {
   });
   if (computeCentroidBtn) computeCentroidBtn.addEventListener('click', () => {
     const rhoStr = rhoInput ? rhoInput.value : '';
-    const rho = compileFnOrFallback(rhoStr, '1');
+    const rhoNorm = normalizeExprRightSide(rhoStr);
+    const rho = compileFnOrFallback(rhoNorm, '1');
     if (!rho) return renderIntegralsHtml('<strong>Centro de masa:</strong> ρ inválida');
     const axes = getAxesFromUI();
     const n = getIntegralResolution();
@@ -1559,12 +1781,151 @@ function wireUI() {
     renderIntegralsHtml(`<div><strong>Masa (∬ ρ dA):</strong> ${Number(resC.mass.toFixed(6))}</div><div><strong>x̄:</strong> ${isFinite(resC.xbar) ? Number(resC.xbar.toFixed(6)) : '—'}</div><div><strong>ȳ:</strong> ${isFinite(resC.ybar) ? Number(resC.ybar.toFixed(6)) : '—'}</div>`);
   });
   if (computeVolumeBtn) computeVolumeBtn.addEventListener('click', () => {
-    const f = compileFnOrFallback(fnInput.value, '7*x*y / exp(x^2 + y^2)');
+    const f = compileFnOrFallback(getFnExprNormalized(), '7*x*y / exp(x^2 + y^2)');
     if (!f) return renderIntegralsHtml('<strong>Volumen:</strong> Expresión inválida');
     const axes = getAxesFromUI();
     const n = getIntegralResolution();
-    const resV = computeVolumeUnderSurface({ fCompiled: f, axes, nx: n, ny: n });
-    renderIntegralsHtml(`<div><strong>Volumen bajo z=f(x,y) respecto a z=0:</strong> ${Number(resV.volume.toFixed(6))}</div>`);
+    // Leer plano z0 y si se usa ρ como peso
+    let z0 = 0;
+    if (volumeZ0Input && isFinite(parseFloat(volumeZ0Input.value))) {
+      z0 = parseFloat(volumeZ0Input.value);
+    }
+    const useRho = !!(volumeUseRho && volumeUseRho.checked);
+    let rho = null;
+    if (useRho) {
+      const rhoStr = rhoInput ? rhoInput.value : '';
+      const rhoNorm = normalizeExprRightSide(rhoStr);
+      rho = compileFnOrFallback(rhoNorm, '1');
+      if (!rho) return renderIntegralsHtml('<strong>Volumen:</strong> ρ inválida');
+    }
+    const resV = computeVolumeUnderSurface({ fCompiled: f, rhoCompiled: rho, useRho, z0, axes, nx: n, ny: n });
+    const suffix = useRho ? ' (ponderado por ρ)' : '';
+    renderIntegralsHtml(`<div><strong>Volumen bajo z=f(x,y) respecto a z=${z0}:</strong> ${Number(resV.volume.toFixed(6))}${suffix}</div>`);
+  });
+
+  // --------- Límites ----------
+  function renderLimitsHtml(html) { if (calcLimits) calcLimits.innerHTML = html; }
+  function computeLimitOneVar({ fCompiled, variable = 'x', target, otherFixed, axes, side = 'both' }) {
+    const span = (variable === 'x') ? (axes.xmax - axes.xmin) : (axes.ymax - axes.ymin);
+    const h0 = Math.max(1e-6, span * 1e-3);
+    const distances = [1, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625].map((m) => m * h0);
+    const paramDefaults = { a: 1, b: 1, c: 1, d: 0, t: 0, v: 1 };
+    const evalAt = (x, y) => { try { const z = fCompiled.evaluate({ x, y, ...paramDefaults }); return isFinite(z) ? z : NaN; } catch (_) { return NaN; } };
+    const y0 = (variable === 'x') ? otherFixed : target;
+    const x0 = (variable === 'x') ? target : otherFixed;
+    const leftVals = [], rightVals = [];
+    for (const d of distances) {
+      if (side === 'both' || side === 'left') {
+        const x = (variable === 'x') ? (target - d) : x0;
+        const y = (variable === 'y') ? (target - d) : y0;
+        const v = evalAt(x, y);
+        if (isFinite(v)) leftVals.push(v);
+      }
+      if (side === 'both' || side === 'right') {
+        const x = (variable === 'x') ? (target + d) : x0;
+        const y = (variable === 'y') ? (target + d) : y0;
+        const v = evalAt(x, y);
+        if (isFinite(v)) rightVals.push(v);
+      }
+    }
+    const tailStats = (arr) => {
+      const k = Math.min(4, arr.length);
+      if (k === 0) return { ok: false, value: NaN, dev: Infinity, count: 0 };
+      const tail = arr.slice(-k);
+      const avg = tail.reduce((s, v) => s + v, 0) / k;
+      const dev = Math.max(...tail.map((v) => Math.abs(v - avg)));
+      const tol = 1e-3 + 1e-6 * Math.abs(avg);
+      return { ok: dev <= tol, value: avg, dev, count: k };
+    };
+    const L = tailStats(leftVals);
+    const R = tailStats(rightVals);
+    let exists = false, value = NaN;
+    if (side === 'left') { exists = L.ok; value = L.value; }
+    else if (side === 'right') { exists = R.ok; value = R.value; }
+    else { // both
+      if (L.ok && R.ok && isFinite(L.value) && isFinite(R.value) && Math.abs(L.value - R.value) <= (1e-3 + 1e-6 * Math.max(Math.abs(L.value), Math.abs(R.value)))) {
+        exists = true; value = (L.value + R.value) / 2;
+      }
+    }
+    return { exists, value, left: L, right: R };
+  }
+
+  function computeLimit2D({ fCompiled, x0, y0, axes }) {
+    const span = Math.max(axes.xmax - axes.xmin, axes.ymax - axes.ymin);
+    const h0 = Math.max(1e-6, span * 1e-3);
+    const distances = [1, 0.5, 0.25, 0.125, 0.0625, 0.03125].map((m) => m * h0);
+    const paramDefaults = { a: 1, b: 1, c: 1, d: 0, t: 0, v: 1 };
+    const evalAt = (x, y) => { try { const z = fCompiled.evaluate({ x, y, ...paramDefaults }); return isFinite(z) ? z : NaN; } catch (_) { return NaN; } };
+    const paths = [
+      { name: 'x→x₀, y=ȳ', xy: (t) => [x0 + t, y0] },
+      { name: 'y→ȳ, x=x₀', xy: (t) => [x0, y0 + t] },
+      { name: 'diagonal +', xy: (t) => [x0 + t, y0 + t] },
+      { name: 'diagonal −', xy: (t) => [x0 + t, y0 - t] },
+      { name: 'pendiente 2', xy: (t) => [x0 + t, y0 + 2 * t] },
+      { name: 'pendiente −2', xy: (t) => [x0 + t, y0 - 2 * t] },
+      { name: 'parábola +', xy: (t) => [x0 + t, y0 + t * t] },
+      { name: 'parábola −', xy: (t) => [x0 + t, y0 - t * t] },
+    ];
+    const results = [];
+    for (const p of paths) {
+      const vals = [];
+      for (const d of distances) {
+        for (const s of [-1, 1]) {
+          const [x, y] = p.xy(s * d);
+          const v = evalAt(x, y);
+          if (isFinite(v)) vals.push(v);
+        }
+      }
+      const k = Math.min(4, vals.length);
+      if (k === 0) { results.push({ name: p.name, ok: false, value: NaN }); continue; }
+      const tail = vals.slice(-k);
+      const avg = tail.reduce((s, v) => s + v, 0) / k;
+      const dev = Math.max(...tail.map((v) => Math.abs(v - avg)));
+      const tol = 1e-3 + 1e-6 * Math.abs(avg);
+      results.push({ name: p.name, ok: dev <= tol, value: avg });
+    }
+    const okVals = results.filter((r) => r.ok && isFinite(r.value)).map((r) => r.value);
+    let exists = false, value = NaN;
+    if (okVals.length >= 2) {
+      const vmin = Math.min(...okVals), vmax = Math.max(...okVals);
+      if (Math.abs(vmax - vmin) <= (1e-3 + 1e-6 * Math.max(Math.abs(vmax), Math.abs(vmin)))) {
+        exists = true; value = okVals.reduce((s, v) => s + v, 0) / okVals.length;
+      }
+    }
+    return { exists, value, paths: results };
+  }
+
+  if (computeLimitsBtn) computeLimitsBtn.addEventListener('click', () => {
+    const f = compileFnOrFallback(getFnExprNormalized(), '7*x*y / exp(x^2 + y^2)');
+    if (!f) return renderLimitsHtml('<strong>Límites:</strong> Expresión inválida');
+    const axes = getAxesFromUI();
+    const x0y0 = getCalcPointOrCenter();
+    const type = limitType ? limitType.value : 'x';
+    const side = limitSide ? limitSide.value : 'both';
+    let a = isFinite(parseFloat(limitXTarget?.value)) ? parseFloat(limitXTarget.value) : x0y0.x0;
+    let b = isFinite(parseFloat(limitYTarget?.value)) ? parseFloat(limitYTarget.value) : x0y0.y0;
+    let html = '';
+    if (type === 'x') {
+      const res = computeLimitOneVar({ fCompiled: f, variable: 'x', target: a, otherFixed: x0y0.y0, axes, side });
+      const head = `lim x→a (y=ȳ) con a=${Number(a)}, ȳ=${Number(x0y0.y0)} (${side})`;
+      const valStr = res.exists && isFinite(res.value) ? Number(res.value.toFixed(6)) : '—';
+      html = `<div><strong>${head}:</strong> ${res.exists ? valStr : 'no existe (izq/dcha no coinciden o inestable)'}</div>`;
+      html += `<div>izquierda: ${res.left.count} muestras; derecha: ${res.right.count} muestras</div>`;
+    } else if (type === 'y') {
+      const res = computeLimitOneVar({ fCompiled: f, variable: 'y', target: b, otherFixed: x0y0.x0, axes, side });
+      const head = `lim y→b (x=x̄) con b=${Number(b)}, x̄=${Number(x0y0.x0)} (${side})`;
+      const valStr = res.exists && isFinite(res.value) ? Number(res.value.toFixed(6)) : '—';
+      html = `<div><strong>${head}:</strong> ${res.exists ? valStr : 'no existe (izq/dcha no coinciden o inestable)'}</div>`;
+      html += `<div>izquierda: ${res.left.count} muestras; derecha: ${res.right.count} muestras</div>`;
+    } else { // xy
+      const res = computeLimit2D({ fCompiled: f, x0: x0y0.x0, y0: x0y0.y0, axes });
+      const head = `lim (x,y)→(x₀,y₀) con (x₀,y₀)=(${Number(x0y0.x0)}, ${Number(x0y0.y0)})`;
+      const valStr = res.exists && isFinite(res.value) ? Number(res.value.toFixed(6)) : '—';
+      html = `<div><strong>${head}:</strong> ${res.exists ? valStr : 'no existe (dependencia de trayectoria)'}</div>`;
+      html += '<div style="margin-top:6px">Rutas muestreadas:</div>';
+      html += '<ul style="margin:6px 0 0 18px">' + res.paths.map((p) => `<li>${p.name}: ${p.ok && isFinite(p.value) ? Number(p.value.toFixed(6)) : '—'}</li>`).join('') + '</ul>';
+    }
+    renderLimitsHtml(html);
   });
 
   // Optimización (Lagrange) UI
@@ -1574,14 +1935,63 @@ function wireUI() {
   const solveLagrangeBtn = document.getElementById('solveLagrangeBtn');
   const calcOptimization = document.getElementById('calcOptimization');
   function renderOptimHtml(html) { if (calcOptimization) calcOptimization.innerHTML = html; }
+  // Normalizadores de entrada: aceptan igualdades y expresiones con "f(x,y)="
+  function normalizeConstraintInput(s) {
+    if (!s) return s;
+    const str = s.trim();
+    if (str.includes('=')) {
+      const parts = str.split('=');
+      const left = parts[0] ? parts[0].trim() : '';
+      const right = parts.slice(1).join('=').trim();
+      return `(${left}) - (${right})`;
+    }
+    return str;
+  }
+  function normalizeExprRightSide(s) {
+    if (!s) return s;
+    const str = s.trim();
+    const idx = str.indexOf('=');
+    if (idx !== -1) return str.slice(idx + 1).trim();
+    return str;
+  }
+  // Obtiene la expresión de f(x,y) normalizada, aceptando entradas del tipo "f(x,y) = ..."
+  function getFnExprNormalized() {
+    const raw = (fnInput && fnInput.value) ? fnInput.value.trim() : '';
+    const right = normalizeExprRightSide(raw);
+    return (right && right.length > 0) ? right : '7*x*y / exp(x^2 + y^2)';
+  }
   if (solveLagrangeBtn) solveLagrangeBtn.addEventListener('click', () => {
     const rawF = fnInput.value;
     const rawG = constraintInput ? constraintInput.value : '';
-    const x0 = parseFloat(optimX0 ? optimX0.value : '0');
-    const y0 = parseFloat(optimY0 ? optimY0.value : '0');
-    const res = solveLagrange(rawF, rawG, x0, y0);
-    if (!res.ok) return renderOptimHtml(`<strong>Lagrange:</strong> ${res.message || 'No convergió'}`);
-    renderOptimHtml(`<div><strong>Solución:</strong> (x*, y*) = (${Number(res.x.toFixed(6))}, ${Number(res.y.toFixed(6))})</div><div><strong>λ*:</strong> ${Number(res.lambda.toFixed(6))}</div><div><strong>f(x*,y*):</strong> ${Number(res.fval.toFixed(6))}</div><div><strong>g(x*,y*):</strong> ${Number(res.gval.toFixed(6))}</div>`);
+    let x0 = parseFloat(optimX0 ? optimX0.value : '0');
+    let y0 = parseFloat(optimY0 ? optimY0.value : '0');
+    const axes = getAxesFromUI();
+    if (!isFinite(x0)) x0 = (axes.xmin + axes.xmax) / 2;
+    if (!isFinite(y0)) y0 = (axes.ymin + axes.ymax) / 2;
+    const rawFNorm = normalizeExprRightSide(rawF);
+    const rawGNorm = normalizeConstraintInput(rawG);
+    const res = solveLagrange(rawFNorm, rawGNorm, x0, y0);
+    if (!res.ok) return renderOptimHtml(`<strong>Lagrange:</strong> ${res.message || 'Expresión inválida o no convergió'}`);
+    const proc = `
+      <div style="margin-bottom:6px"><strong>Procedimiento (Lagrange):</strong></div>
+      <div>• f(x,y) = ${rawFNorm && rawFNorm.trim().length ? rawFNorm.trim() : '7*x*y / exp(x^2 + y^2)'}</div>
+      <div>• g(x,y) = ${rawGNorm && rawGNorm.trim().length ? rawGNorm.trim() : 'x + y - 1'}</div>
+      <div>• Condiciones: ∇f(x,y) = λ ∇g(x,y), g(x,y) = 0</div>
+      <div>• Método: Newton sobre sistema 3×3 con Jacobiano por diferencias finitas centrales</div>
+      <div>• Inicial: (x₀,y₀) = (${Number(x0)}, ${Number(y0)}); iteraciones máx = 25; tolerancia ≈ 1e-8</div>
+      <hr style="opacity:0.4;margin:8px 0" />
+    `;
+    const sol = `<div><strong>Solución:</strong> (x*, y*) = (${Number(res.x.toFixed(6))}, ${Number(res.y.toFixed(6))})</div><div><strong>λ*:</strong> ${Number(res.lambda.toFixed(6))}</div><div><strong>f(x*,y*):</strong> ${Number(res.fval.toFixed(6))}</div><div><strong>g(x*,y*):</strong> ${Number(res.gval.toFixed(6))}</div>`;
+    renderOptimHtml(proc + sol);
+    // Llevar el punto activo (x₀,y₀) a la solución y refrescar cálculos/visualización
+    if (optimX0) optimX0.value = String(Number(res.x.toFixed(6)));
+    if (optimY0) optimY0.value = String(Number(res.y.toFixed(6)));
+    const calcX0El = document.getElementById('calcX0');
+    const calcY0El = document.getElementById('calcY0');
+    if (calcX0El) calcX0El.value = String(Number(res.x.toFixed(6)));
+    if (calcY0El) calcY0El.value = String(Number(res.y.toFixed(6)));
+    runCalculations();
+    if (viewMode === '2D') redraw2D(); else updateGradientArrow3D();
   });
   fnInput.addEventListener('input', () => { runCalculations(); if (viewMode === '2D') redraw2D(); else updateGradientArrow3D(); });
   res.addEventListener('change', () => { runCalculations(); if (viewMode === '2D') redraw2D(); else updateGradientArrow3D(); });
@@ -1648,18 +2058,63 @@ function wireUI() {
   // Flecha de gradiente en 3D
   function updateGradientArrow3D() {
     if (gradientArrow3D) { try { scene.remove(gradientArrow3D); } catch (_) {} gradientArrow3D = null; }
+    if (gradientField3DGroup) { try { scene.remove(gradientField3DGroup); } catch (_) {} gradientField3DGroup = null; }
     if (!(showGradient3D && showGradient3D.checked)) return;
+<<<<<<< HEAD
     if (!lastCalc || !lastCalc.grad || !isFinite(lastCalc.grad.fx) || !isFinite(lastCalc.grad.fy) || !isFinite(lastCalc.f0)) return;
     const x0 = lastCalc.point && isFinite(lastCalc.point.x) ? lastCalc.point.x : parseLocaleNumber(calcX0 ? calcX0.value : '0', 0);
     const y0 = lastCalc.point && isFinite(lastCalc.point.y) ? lastCalc.point.y : parseLocaleNumber(calcY0 ? calcY0.value : '0', 0);
+=======
+    if (!lastCalc || !lastCalc.grad || !isFinite(lastCalc.grad.fx) || !isFinite(lastCalc.grad.fy)) return;
+    const { x0, y0 } = getCalcPointOrCenter();
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
     const dir = new THREE.Vector3(lastCalc.grad.fx, lastCalc.grad.fy, 0);
     if (dir.length() === 0) return;
     dir.normalize();
     const scaleVal = parseFloat(gradientScale ? gradientScale.value : '0.2');
     const length = Math.max(1e-6, scaleVal) * Math.max(currentAxes.xmax - currentAxes.xmin, currentAxes.ymax - currentAxes.ymin);
-    const origin = new THREE.Vector3(x0, y0, lastCalc.f0);
+    const zCenter = (currentAxes.zmin + currentAxes.zmax) / 2;
+    const zOrigin = isFinite(lastCalc.f0) ? lastCalc.f0 : zCenter;
+    const origin = new THREE.Vector3(x0, y0, zOrigin);
     gradientArrow3D = new THREE.ArrowHelper(dir, origin, length, 0xf59e0b);
     scene.add(gradientArrow3D);
+
+    // Campo de gradiente 3D: múltiples flechas sobre la superficie
+    const f = compileFnOrFallback(getFnExprNormalized(), '7*x*y / exp(x^2 + y^2)');
+    if (!f) return; // si no compila, mostramos sólo la flecha principal
+    const axes = currentAxes;
+    const paramDefaults = { a: 1, b: 1, c: 1, d: 0, t: 0, v: 1 };
+    const density = Math.min(18, Math.max(8, Math.round((Math.max(axes.xmax - axes.xmin, axes.ymax - axes.ymin)) * 2)));
+    const group = new THREE.Group();
+    const hBase = 1e-3 * Math.max(axes.xmax - axes.xmin, axes.ymax - axes.ymin);
+    const h = Math.max(1e-5, hBase);
+    const arrowColor = 0xf59e0b;
+    for (let jy = 0; jy < density; jy++) {
+      const y = axes.ymin + (jy + 0.5) * (axes.ymax - axes.ymin) / density;
+      for (let ix = 0; ix < density; ix++) {
+        const x = axes.xmin + (ix + 0.5) * (axes.xmax - axes.xmin) / density;
+        let f0, f_xph, f_xmh, f_yph, f_ymh;
+        try {
+          f0 = f.evaluate({ x, y, ...paramDefaults });
+          f_xph = f.evaluate({ x: x + h, y, ...paramDefaults });
+          f_xmh = f.evaluate({ x: x - h, y, ...paramDefaults });
+          f_yph = f.evaluate({ x, y: y + h, ...paramDefaults });
+          f_ymh = f.evaluate({ x, y: y - h, ...paramDefaults });
+        } catch (_) { continue; }
+        if (!isFinite(f_xph) || !isFinite(f_xmh) || !isFinite(f_yph) || !isFinite(f_ymh) || !isFinite(f0)) continue;
+        const fx = (f_xph - f_xmh) / (2 * h);
+        const fy = (f_yph - f_ymh) / (2 * h);
+        const norm = Math.hypot(fx, fy);
+        if (!(isFinite(norm) && norm > 0)) continue;
+        const dirV = new THREE.Vector3(fx / norm, fy / norm, 0);
+        const originV = new THREE.Vector3(x, y, f0);
+        const lenV = Math.max(1e-6, scaleVal) * Math.max(axes.xmax - axes.xmin, axes.ymax - axes.ymin) * 0.6;
+        const arrow = new THREE.ArrowHelper(dirV, originV, lenV, arrowColor);
+        group.add(arrow);
+      }
+    }
+    gradientField3DGroup = group;
+    scene.add(group);
   }
 
   // Campo de gradiente en 3D (múltiples flechas sobre la superficie z=f(x,y))

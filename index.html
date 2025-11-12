@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CalcPlot3D – Clone</title>
+    <title>CalMulti3D</title>
     <link rel="stylesheet" href="styles.css" />
     <!-- Usaremos módulos ES para Three.js y OrbitControls desde main.js -->
     <script src="https://cdn.jsdelivr.net/npm/mathjs@11.11.0/lib/browser/math.js"></script>
@@ -13,7 +13,7 @@
   <body>
     <div id="app">
       <aside id="sidebar">
-        <h1>CalcPlot3D – Clone</h1>
+        <h1>CalMulti3D</h1>
         <section class="panel">
           <h2>Función</h2>
           <label for="fnSelect">Selecciona una fórmula</label>
@@ -168,8 +168,17 @@
           <h2>Cálculos</h2>
           <div class="grid">
             <div>
+<<<<<<< HEAD
               <label for="autoPoint">Elegir punto automáticamente</label>
               <input id="autoPoint" type="checkbox" checked />
+=======
+              <label for="calcX0">x₀</label>
+              <input id="calcX0" type="number" step="0.1" value="0" title="Si queda vacío o inválido, se usa el centro de la caja" placeholder="(auto centro)" />
+            </div>
+            <div>
+              <label for="calcY0">y₀</label>
+              <input id="calcY0" type="number" step="0.1" value="0" title="Si queda vacío o inválido, se usa el centro de la caja" placeholder="(auto centro)" />
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
             </div>
             <div>
               <label for="showGradient">Mostrar gradiente en 2D</label>
@@ -184,6 +193,10 @@
               <input id="gradientFieldDensity" type="range" min="5" max="20" step="1" value="10" />
               <span id="gradientFieldDensityLabel">10</span>
             </div>
+          </div>
+          <div class="row">
+            <button id="calcUseCenter" title="Fijar x₀,y₀ al centro de la caja actual">Usar centro de la caja</button>
+            <small id="calcPointHint" style="margin-left: 8px; opacity: 0.8;">Vacío ⇒ se usa el centro</small>
           </div>
           <div class="grid">
             <div>
@@ -206,6 +219,7 @@
               <input id="calcEnabled" type="checkbox" checked />
             </div>
           </div>
+<<<<<<< HEAD
           <div class="grid">
             <div>
               <label for="useSymbolicDerivatives">Usar derivadas simbólicas (si aplica)</label>
@@ -219,8 +233,36 @@
           </div>
           <div id="calcDomainRange" class="calc-block"></div>
           <div id="calcDerivatives" class="calc-block"></div>
+=======
+  <div id="calcDomainRange" class="calc-block"></div>
+  <div id="calcDerivatives" class="calc-block"></div>
+
+  <div class="row" style="margin-top:10px">
+    <h3>Límites</h3>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <label for="limitType">Tipo</label>
+      <select id="limitType">
+        <option value="x">lim x→a (con y=ȳ)</option>
+        <option value="y">lim y→b (con x=x̄)</option>
+        <option value="xy">lim (x,y)→(x₀,y₀)</option>
+      </select>
+      <label for="limitSide">Lado</label>
+      <select id="limitSide">
+        <option value="both">Bilateral</option>
+        <option value="left">Izquierda (−)</option>
+        <option value="right">Derecha (+)</option>
+      </select>
+      <label for="limitXTarget">a</label>
+      <input id="limitXTarget" type="number" step="0.1" placeholder="x→a" style="width:100px" />
+      <label for="limitYTarget">b</label>
+      <input id="limitYTarget" type="number" step="0.1" placeholder="y→b" style="width:100px" />
+      <button id="computeLimitsBtn">Calcular límites</button>
+    </div>
+    <div id="calcLimits" class="calc-block"></div>
+  </div>
+>>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
           <hr />
-          <h3>Integrales</h3>
+    <h3>Integrales</h3>
           <div class="grid">
             <div>
               <label for="integralRes">Resolución integral</label>
@@ -228,14 +270,20 @@
               <span id="integralResLabel">60</span>
             </div>
             <div>
-              <label for="rhoInput">Densidad ρ(x,y)</label>
-              <input id="rhoInput" type="text" placeholder="1" />
+    <label for="rhoInput">Densidad ρ(x,y)</label>
+    <input id="rhoInput" type="text" placeholder="1" />
+    <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+      <label for="volumeZ0Input">Plano z0</label>
+      <input id="volumeZ0Input" type="number" step="0.1" value="0" style="width:120px" />
+      <label for="volumeUseRho" style="margin-left:12px">Usar ρ como peso</label>
+      <input id="volumeUseRho" type="checkbox" />
+    </div>
             </div>
           </div>
           <div class="row">
             <button id="computeDoubleIntegralBtn">Calcular ∬ f(x,y) dA</button>
-            <button id="computeCentroidBtn">Centro de masa (ρ)</button>
-            <button id="computeVolumeBtn">Volumen bajo superficie (z=0)</button>
+    <button id="computeCentroidBtn">Centro de masa (ρ)</button>
+    <button id="computeVolumeBtn">Volumen bajo superficie (z=0)</button>
           </div>
           <div id="calcIntegrals" class="calc-block"></div>
           <hr />
@@ -250,6 +298,81 @@
             <button id="solveLagrangeBtn">Resolver por multiplicadores de Lagrange</button>
           </div>
           <div id="calcOptimization" class="calc-block"></div>
+        </section>
+        <section class="panel">
+          <h2>Ayuda Teórica</h2>
+          <p>
+            Esta calculadora trabaja con funciones de dos variables en la forma
+            <span>z = f(x, y)</span> y visualiza tanto la superficie 3D como las
+            curvas de nivel 2D dentro de los límites definidos por los ejes.
+            Los resultados numéricos se calculan de manera aproximada mediante
+            muestreo uniforme del dominio.
+          </p>
+
+          <h3>Función y dominio</h3>
+          <p>
+            El dominio usado es el rectángulo definido por <code>xmin</code>,
+            <code>xmax</code>, <code>ymin</code> y <code>ymax</code>. La malla
+            sobre este dominio se divide segun la <strong>Resolución</strong>,
+            y en cada punto se evalúa <span>f(x,y)</span> para construir la
+            superficie y las curvas de nivel.
+          </p>
+
+          <h3>Derivadas y gradiente</h3>
+          <p>
+            Las derivadas parciales se aproximan por diferencias finitas y el
+            gradiente se muestra como
+            <span>\(\nabla f(x,y) = \langle f_x(x,y),\; f_y(x,y) \rangle\)</span>.
+            Su magnitud indica la rapidez de cambio y su dirección el sentido
+            de mayor incremento local. La derivada direccional en una dirección
+            unidad <span>\(\mathbf{u}\)</span> se calcula como
+            <span>\(D_{\mathbf{u}} f = \nabla f \cdot \mathbf{u}\)</span>.
+          </p>
+
+          <h3>Curvas de nivel</h3>
+          <p>
+            Una curva de nivel es el conjunto de puntos
+            <span>\(\{(x,y) : f(x,y) = c\}\)</span> para un valor constante
+            <span>c</span>. Se dibujan múltiples valores de <span>c</span> para
+            resaltar la estructura del campo escalar.
+          </p>
+
+          <h3>Superficie 3D y recorte</h3>
+          <p>
+            La superficie 3D se genera a partir de la malla evaluada. Las
+            opciones de recorte (<code>clipToBox</code>, <code>z-clip</code>)
+            permiten ocultar partes fuera de la caja o fuera del rango vertical
+            especificado para mejorar la interpretación visual.
+          </p>
+
+          <h3>Integrales dobles</h3>
+          <p>
+            El valor aproximado de <span>\(\iint f(x,y)\, dA\)</span> se
+            obtiene por suma de Riemann sobre la malla. El volumen bajo la
+            superficie respecto a <span>z=0</span> y el centro de masa con
+            densidad <span>\(\rho(x,y)\)</span> se calculan como:
+          </p>
+          <p>
+            <span>
+              \(V \approx \sum f(x_i,y_j)\,\Delta x\,\Delta y\),
+              \quad
+              \(\bar{x} = \dfrac{\iint x\,\rho\, dA}{\iint \rho\, dA}\),
+              \quad
+              \(\bar{y} = \dfrac{\iint y\,\rho\, dA}{\iint \rho\, dA}\).
+            </span>
+          </p>
+
+          <h3>Estabilidad y buenas prácticas</h3>
+          <ul>
+            <li>Evita singularidades (división por cero, log de negativo, etc.).</li>
+            <li>Si <span>f(x,y)</span> no está definida en algún punto, se omite.</li>
+            <li>Más resolución mejora detalle pero aumenta costo de cómputo.</li>
+            <li>Usa el botón "Usar centro de la caja" para fijar <span>(x₀,y₀)</span> si los campos están vacíos o inválidos.</li>
+          </ul>
+          <p style="opacity:0.8">
+            Notación renderizada con MathJax. Todos los cálculos son
+            aproximaciones numéricas basadas en muestreo.
+          </p>
         </section>
       </aside>
 
