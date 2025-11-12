@@ -1,5 +1,5 @@
-import * as THREE from 'https://unpkg.com/three@0.157.0/build/three.module.js?module';
-import { OrbitControls } from 'https://unpkg.com/three@0.157.0/examples/jsm/controls/OrbitControls.js?module';
+import * as THREE from 'https://esm.sh/three@0.157.0';
+import { OrbitControls } from 'https://esm.sh/three@0.157.0/examples/jsm/controls/OrbitControls.js';
 
 /* Scene setup */
 let scene, camera, renderer, controls, axesHelper, gridHelper;
@@ -9,6 +9,8 @@ let axesGroup = null;
 let plotBoxHelper = null;
 let viewMode = '3D';
 let gradientArrow3D = null;
+// Grupo para campo de gradiente en 3D (múltiples flechas)
+let gradientField3DGroup = null;
 
 /* Presets */
 const PRESETS = [
@@ -151,7 +153,7 @@ function animate() {
 }
 
 /* 2D Contours */
-function drawContours2D({ exprString, axes, resolution, levelsCount, lineWidth, colorMode = 'red', gradient = false, gradientOverlay = null }) {
+function drawContours2D({ exprString, axes, resolution, levelsCount, lineWidth, colorMode = 'red', gradient = false, gradientOverlay = null, gradientField = null }) {
   const canvas = document.getElementById('contourCanvas');
   const ctx = canvas.getContext('2d');
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -584,7 +586,7 @@ function buildSurface({ exprString, resolution, axes, zclipLow, zclipHigh }) {
 
       positions[3 * idx + 0] = x;
       positions[3 * idx + 1] = y;
-      positions[3 * idx + 2] = isFinite(z) ? z : NaN; // NaN hides vertex
+      positions[3 * idx + 2] = isFinite(z) ? z : 0;
     }
   }
 
@@ -684,6 +686,10 @@ function buildSurface({ exprString, resolution, axes, zclipLow, zclipHigh }) {
 let nextGraphId = 1;
 function addGraph(mesh, label) {
   const id = `g${nextGraphId++}`;
+  try {
+    if (!mesh.userData) mesh.userData = {};
+    mesh.userData.exprString = label; // almacenar la expresión para reconstruir
+  } catch (_) {}
   graphs.set(id, mesh);
   scene.add(mesh);
 
@@ -721,6 +727,28 @@ function clearAllGraphs() {
   }
   graphs.clear();
   document.getElementById('graphsList').innerHTML = '';
+}
+
+// Reconstruye todas las superficies existentes con los ejes actuales y la resolución actual
+function rebuildAllGraphsForAxes() {
+  const axes = getAxesFromUI();
+  const { zclipLow, zclipHigh } = getZClip();
+  const resEl = document.getElementById('resolution');
+  const resolution = resEl ? parseInt(resEl.value, 10) : 60;
+  const gsEl = document.getElementById('graphScale3D');
+  const scaleVal = gsEl ? parseFloat(gsEl.value) : 1;
+  const entries = Array.from(graphs.entries());
+  entries.forEach(([id, oldMesh]) => {
+    const expr = oldMesh && oldMesh.userData ? oldMesh.userData.exprString : null;
+    if (!expr) return;
+    try {
+      const newMesh = buildSurface({ exprString: expr, resolution, axes, zclipLow, zclipHigh });
+      if (newMesh && newMesh.scale) newMesh.scale.set(scaleVal, scaleVal, scaleVal);
+      scene.remove(oldMesh);
+      graphs.set(id, newMesh);
+      scene.add(newMesh);
+    } catch (_) {}
+  });
 }
 
 /* UI wiring */
@@ -839,9 +867,16 @@ function wireUI() {
   const calcX0 = document.getElementById('calcX0');
   const calcY0 = document.getElementById('calcY0');
   const showGradient2D = document.getElementById('showGradient');
+  const showGradientField2D = document.getElementById('showGradientField2D');
+  const gradientFieldDensity = document.getElementById('gradientFieldDensity');
+  const gradientFieldDensityLabel = document.getElementById('gradientFieldDensityLabel');
   const showGradient3D = document.getElementById('showGradient3D');
+  const showGradientField3D = document.getElementById('showGradientField3D');
   const gradientScale = document.getElementById('gradientScale');
   const gradientScaleLabel = document.getElementById('gradientScaleLabel');
+  const useSymbolicDerivatives = document.getElementById('useSymbolicDerivatives');
+  const derivHScale = document.getElementById('derivHScale');
+  const derivHScaleLabel = document.getElementById('derivHScaleLabel');
   const useFixedColor = document.getElementById('useFixedColor');
   const useCustomWidth = document.getElementById('useCustomWidth');
   const calcEnabled = document.getElementById('calcEnabled');
@@ -849,6 +884,7 @@ function wireUI() {
   const calcDerivatives = document.getElementById('calcDerivatives');
   const showGrid3D = document.getElementById('showGrid3D');
   const showAxes3D = document.getElementById('showAxes3D');
+  const autoUpdateGraphs = document.getElementById('autoUpdateGraphs');
   const resetOptionsBtn = document.getElementById('resetOptionsBtn');
   let lastCalc = null;
 
@@ -943,6 +979,80 @@ function wireUI() {
   }
 
   // Ejecuta cálculos (dominio/rango y derivadas parciales) y actualiza panel
+  function parseLocaleNumber(str, fallback) {
+    try {
+      const s = (str == null ? '' : String(str)).trim().replace(',', '.');
+      const n = parseFloat(s);
+      return Number.isFinite(n) ? n : fallback;
+    } catch (_) { return fallback; }
+  }
+  // Inferencia simple de restricciones de dominio desde la expresión
+  function buildDomainPredicateFromExpr(raw) {
+    let description = '';
+    let constraints = [];
+    try {
+      const ast = math.parse(raw);
+      function visit(node) {
+        if (!node) return;
+        // sqrt(arg) => arg >= 0
+        if (node.isFunctionNode && (node.name === 'sqrt')) {
+          const arg = node.args && node.args[0];
+          if (arg) constraints.push({ kind: 'ge', node: arg, value: 0 });
+        }
+        // log/ln(arg) => arg > 0
+        if (node.isFunctionNode && (node.name === 'log' || node.name === 'ln')) {
+          const arg = node.args && node.args[0];
+          if (arg) constraints.push({ kind: 'gt', node: arg, value: 0 });
+        }
+        // asin/acos(arg) => arg in [-1,1]
+        if (node.isFunctionNode && (node.name === 'asin' || node.name === 'acos')) {
+          const arg = node.args && node.args[0];
+          if (arg) constraints.push({ kind: 'between', node: arg, min: -1, max: 1 });
+        }
+        // División: a / b => b != 0
+        if (node.isOperatorNode && node.op === '/') {
+          const denom = node.args && node.args[1];
+          if (denom) constraints.push({ kind: 'neq', node: denom, value: 0 });
+        }
+        // Recurse
+        if (node.args && Array.isArray(node.args)) node.args.forEach(visit);
+        if (node.content) visit(node.content);
+        if (node.value) visit(node.value);
+        if (node.object) visit(node.object);
+      }
+      visit(ast);
+    } catch (_) {}
+    // Compilar cada restricción
+    const eps = 1e-12;
+    const compiled = constraints.map(c => ({
+      kind: c.kind,
+      fn: (() => { try { return c.node.compile(); } catch (_) { return null; } })(),
+      meta: c
+    })).filter(c => c.fn);
+    // Descripción básica
+    description = compiled.map(c => {
+      const text = c.meta.node.toString();
+      if (c.kind === 'ge') return `${text} \u2265 0`;
+      if (c.kind === 'gt') return `${text} > 0`;
+      if (c.kind === 'between') return `${text} \u2208 [-1, 1]`;
+      if (c.kind === 'neq') return `${text} \u2260 0`;
+      return '';
+    }).filter(Boolean).join(', ');
+    const predicate = (x, y, params = {}) => {
+      try {
+        for (const c of compiled) {
+          const val = c.fn.evaluate({ x, y, ...params });
+          if (!isFinite(val)) return false;
+          if (c.kind === 'ge' && !(val >= -eps)) return false;
+          if (c.kind === 'gt' && !(val > eps)) return false;
+          if (c.kind === 'between' && !(val >= -1 - eps && val <= 1 + eps)) return false;
+          if (c.kind === 'neq' && !(Math.abs(val) > eps)) return false;
+        }
+        return true;
+      } catch (_) { return false; }
+    };
+    return { predicate, description };
+  }
   function runCalculations() {
     if (calcEnabled && !calcEnabled.checked) {
       if (calcDomainRange) calcDomainRange.innerHTML = '';
@@ -962,6 +1072,7 @@ function wireUI() {
       lastCalc = null;
       return;
     }
+    const domainInfo = buildDomainPredicateFromExpr(raw);
     const { xmin, xmax, ymin, ymax } = axes;
     const nx = Math.max(20, Math.min(80, resolution));
     const ny = nx;
@@ -970,16 +1081,32 @@ function wireUI() {
     const paramDefaults = { a: 1, b: 1, c: 1, d: 0, t: 0, v: 1 };
     let valid = 0, total = nx * ny;
     let zMin = Infinity, zMax = -Infinity;
+    // Rango válido observado
+    let minValidX = Infinity, maxValidX = -Infinity;
+    let minValidY = Infinity, maxValidY = -Infinity;
+    // Selección automática del punto: argmax |f(x,y)| durante el muestreo
+    let bestScore = -Infinity;
+    let bestX = (xmin + xmax) / 2;
+    let bestY = (ymin + ymax) / 2;
     for (let iy = 0; iy < ny; iy++) {
       const y = ymin + iy * dy;
       for (let ix = 0; ix < nx; ix++) {
         const x = xmin + ix * dx;
         try {
+          // Validar con dominio matemático antes de evaluar
+          if (!domainInfo.predicate(x, y, paramDefaults)) continue;
           const z = compiled.evaluate({ x, y, ...paramDefaults });
           if (isFinite(z)) {
             valid++;
             zMin = Math.min(zMin, z);
             zMax = Math.max(zMax, z);
+            // Acotar región válida
+            if (x < minValidX) minValidX = x;
+            if (x > maxValidX) maxValidX = x;
+            if (y < minValidY) minValidY = y;
+            if (y > maxValidY) maxValidY = y;
+            const score = Math.abs(z);
+            if (score > bestScore) { bestScore = score; bestX = x; bestY = y; }
           }
         } catch (_) { /* punto fuera del dominio */ }
       }
@@ -988,42 +1115,106 @@ function wireUI() {
     if (calcDomainRange) {
       const zMinStr = isFinite(zMin) ? Number(zMin.toFixed(4)) : '—';
       const zMaxStr = isFinite(zMax) ? Number(zMax.toFixed(4)) : '—';
+      const consDesc = domainInfo.description ? `<div><strong>Restricciones (matemáticas):</strong> ${domainInfo.description}</div>` : '';
       calcDomainRange.innerHTML = `
         <div><strong>Dominio (muestrado):</strong> ${valid} / ${total} puntos válidos (${validPct}%)</div>
+        ${consDesc}
         <div><strong>Rango z aprox:</strong> [${zMinStr}, ${zMaxStr}]</div>
       `;
     }
 
+    // Auto-ajuste del dominio si la región válida es significativamente menor
+    // Sólo si hay puntos válidos y el cálculo está habilitado
+    if (valid > 0 && calcEnabled && calcEnabled.checked) {
+      const widthX = maxValidX - minValidX;
+      const widthY = maxValidY - minValidY;
+      const fullX = xmax - xmin;
+      const fullY = ymax - ymin;
+      const shrinkX = isFinite(widthX) && widthX > 0 ? (widthX / fullX) : 1;
+      const shrinkY = isFinite(widthY) && widthY > 0 ? (widthY / fullY) : 1;
+      const shouldShrink = (shrinkX < 0.6) || (shrinkY < 0.6); // umbral: reducir si <60% del tamaño actual
+      if (shouldShrink) {
+        const padFrac = 0.1; // 10% de margen alrededor
+        const minSpan = 0.5; // tamaño mínimo de dominio por eje
+        const cx = (minValidX + maxValidX) / 2;
+        const cy = (minValidY + maxValidY) / 2;
+        const spanX = Math.max(minSpan, widthX * (1 + padFrac));
+        const spanY = Math.max(minSpan, widthY * (1 + padFrac));
+        const nxmin = Math.max(xmin, cx - spanX / 2);
+        const nxmax = Math.min(xmax, cx + spanX / 2);
+        const nymin = Math.max(ymin, cy - spanY / 2);
+        const nymax = Math.min(ymax, cy + spanY / 2);
+        // Actualizar inputs y estado global
+        const xminEl = document.getElementById('xmin');
+        const xmaxEl = document.getElementById('xmax');
+        const yminEl = document.getElementById('ymin');
+        const ymaxEl = document.getElementById('ymax');
+        if (xminEl) xminEl.value = String(Number(nxmin.toFixed(4)));
+        if (xmaxEl) xmaxEl.value = String(Number(nxmax.toFixed(4)));
+        if (yminEl) yminEl.value = String(Number(nymin.toFixed(4)));
+        if (ymaxEl) ymaxEl.value = String(Number(nymax.toFixed(4)));
+        currentAxes = getAxesFromUI();
+        // Refrescar ayudas y vista
+        if (viewMode === '3D') { updateAxesHelpers(); fitViewToBox(); applyClipToGraphs(); }
+        if (viewMode === '2D') { redraw2D(); }
+      }
+    }
+
     // Derivadas parciales en (x0,y0) por diferencias finitas
-    const x0 = parseFloat(calcX0 ? calcX0.value : '0');
-    const y0 = parseFloat(calcY0 ? calcY0.value : '0');
+    const autoEl = document.getElementById('autoPoint');
+    const useAuto = autoEl ? !!autoEl.checked : true;
+    const x0 = useAuto ? bestX : parseLocaleNumber(calcX0 ? calcX0.value : '0', 0);
+    const y0 = useAuto ? bestY : parseLocaleNumber(calcY0 ? calcY0.value : '0', 0);
     const hBase = 1e-3 * Math.max(xmax - xmin, ymax - ymin);
-    const h = Math.max(1e-5, hBase);
+    const hScaleEl = document.getElementById('derivHScale');
+    const hScale = hScaleEl ? parseFloat(hScaleEl.value) : 1;
+    const h = Math.max(1e-8, hBase * (isFinite(hScale) ? hScale : 1));
     let f0 = NaN, fx = NaN, fy = NaN;
     function evalSafe(x, y) {
       try {
+        if (!domainInfo.predicate(x, y, paramDefaults)) return NaN;
         const z = compiled.evaluate({ x, y, ...paramDefaults });
         return isFinite(z) ? z : NaN;
       } catch (_) { return NaN; }
     }
     f0 = evalSafe(x0, y0);
-    const f_xph = evalSafe(x0 + h, y0);
-    const f_xmh = evalSafe(x0 - h, y0);
-    const f_yph = evalSafe(x0, y0 + h);
-    const f_ymh = evalSafe(x0, y0 - h);
-    if (isFinite(f_xph) && isFinite(f_xmh)) fx = (f_xph - f_xmh) / (2 * h);
-    else if (isFinite(f_xph) && isFinite(f0)) fx = (f_xph - f0) / h;
-    else if (isFinite(f0) && isFinite(f_xmh)) fx = (f0 - f_xmh) / h;
-    if (isFinite(f_yph) && isFinite(f_ymh)) fy = (f_yph - f_ymh) / (2 * h);
-    else if (isFinite(f_yph) && isFinite(f0)) fy = (f_yph - f0) / h;
-    else if (isFinite(f0) && isFinite(f_ymh)) fy = (f0 - f_ymh) / h;
+    // Opción simbólica si está habilitada
+    const useSymEl = document.getElementById('useSymbolicDerivatives');
+    const useSym = useSymEl ? !!useSymEl.checked : false;
+    let usedSymbolic = false;
+    if (useSym) {
+      try {
+        const dxNode = math.derivative(raw, 'x');
+        const dyNode = math.derivative(raw, 'y');
+        const dxc = dxNode.compile();
+        const dyc = dyNode.compile();
+        const fxTry = dxc.evaluate({ x: x0, y: y0, ...paramDefaults });
+        const fyTry = dyc.evaluate({ x: x0, y: y0, ...paramDefaults });
+        if (isFinite(fxTry) && isFinite(fyTry)) { fx = fxTry; fy = fyTry; usedSymbolic = true; }
+      } catch (_) { /* fallback numérico */ }
+    }
+    if (!usedSymbolic) {
+      const f_xph = evalSafe(x0 + h, y0);
+      const f_xmh = evalSafe(x0 - h, y0);
+      const f_yph = evalSafe(x0, y0 + h);
+      const f_ymh = evalSafe(x0, y0 - h);
+      if (isFinite(f_xph) && isFinite(f_xmh)) fx = (f_xph - f_xmh) / (2 * h);
+      else if (isFinite(f_xph) && isFinite(f0)) fx = (f_xph - f0) / h;
+      else if (isFinite(f0) && isFinite(f_xmh)) fx = (f0 - f_xmh) / h;
+      if (isFinite(f_yph) && isFinite(f_ymh)) fy = (f_yph - f_ymh) / (2 * h);
+      else if (isFinite(f_yph) && isFinite(f0)) fy = (f_yph - f0) / h;
+      else if (isFinite(f0) && isFinite(f_ymh)) fy = (f0 - f_ymh) / h;
+    }
     const gradNorm = Math.hypot(fx, fy);
     if (calcDerivatives) {
       const f0Str = isFinite(f0) ? Number(f0.toFixed(6)) : '—';
       const fxStr = isFinite(fx) ? Number(fx.toFixed(6)) : '—';
       const fyStr = isFinite(fy) ? Number(fy.toFixed(6)) : '—';
       const nStr = isFinite(gradNorm) ? Number(gradNorm.toFixed(6)) : '—';
+      const ptStr = `(${Number(x0.toFixed(4))}, ${Number(y0.toFixed(4))})`;
+      const modeStr = useAuto ? 'automático' : 'manual';
       calcDerivatives.innerHTML = `
+        <div><strong>Punto usado:</strong> ${ptStr} <em>(${modeStr})</em></div>
         <div><strong>f(x₀,y₀):</strong> ${f0Str}</div>
         <div><strong>∂f/∂x (x₀,y₀):</strong> ${fxStr}</div>
         <div><strong>∂f/∂y (x₀,y₀):</strong> ${fyStr}</div>
@@ -1224,9 +1415,15 @@ function wireUI() {
       const scaleVal = parseFloat(gradientScale ? gradientScale.value : '0.2');
       overlay = { point: lastCalc.point, vector: lastCalc.grad, scale: scaleVal };
     }
+    let fieldCfg = null;
+    if (showGradientField2D && showGradientField2D.checked) {
+      const densityVal = parseInt(gradientFieldDensity ? gradientFieldDensity.value : '10', 10);
+      const scaleVal = parseFloat(gradientScale ? gradientScale.value : '0.2');
+      fieldCfg = { density: densityVal, scale: scaleVal };
+    }
     const lwEff = (useCustomWidth && useCustomWidth.checked) ? parseFloat(contourWidth.value) : 1;
     const colorEff = (useFixedColor && useFixedColor.checked) ? contourColor.value : 'gray';
-    drawContours2D({ exprString: fnInput.value, axes, resolution, levelsCount: parseInt(contourLevels.value, 10), lineWidth: lwEff, colorMode: colorEff, gradient: contourGradient.checked, gradientOverlay: overlay });
+    drawContours2D({ exprString: fnInput.value, axes, resolution, levelsCount: parseInt(contourLevels.value, 10), lineWidth: lwEff, colorMode: colorEff, gradient: contourGradient.checked, gradientOverlay: overlay, gradientField: fieldCfg });
   }
   viewSel.addEventListener('change', () => setView(viewSel.value));
 
@@ -1270,7 +1467,17 @@ function wireUI() {
     currentAxes = getAxesFromUI();
     updateAxesHelpers();
     if (viewMode === '2D') { runCalculations(); redraw2D(); }
-    if (viewMode === '3D') { runCalculations(); updateGradientArrow3D(); fitViewToBox(); applyClipToGraphs(); }
+    if (viewMode === '3D') {
+      runCalculations();
+      updateGradientArrow3D();
+      fitViewToBox();
+      applyClipToGraphs();
+      if (autoUpdateGraphs && autoUpdateGraphs.checked) {
+        try {
+          rebuildAllGraphsForAxes();
+        } catch (_) {}
+      }
+    }
   });
 
   document.getElementById('clearAllBtn').addEventListener('click', () => {
@@ -1278,11 +1485,27 @@ function wireUI() {
   });
 
   // Eventos del panel Cálculos
-  if (calcX0) calcX0.addEventListener('input', () => { runCalculations(); if (viewMode === '2D') redraw2D(); });
-  if (calcY0) calcY0.addEventListener('input', () => { runCalculations(); if (viewMode === '2D') redraw2D(); });
+  if (calcX0) {
+    calcX0.addEventListener('input', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
+    calcX0.addEventListener('change', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
+  }
+  if (calcY0) {
+    calcY0.addEventListener('input', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
+    calcY0.addEventListener('change', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
+  }
   if (showGradient2D) showGradient2D.addEventListener('change', () => { if (viewMode === '2D') redraw2D(); });
+  if (showGradientField2D) showGradientField2D.addEventListener('change', () => { if (viewMode === '2D') redraw2D(); });
+  if (gradientFieldDensity && gradientFieldDensityLabel) {
+    gradientFieldDensityLabel.textContent = `${parseInt(gradientFieldDensity.value, 10)}`;
+    gradientFieldDensity.addEventListener('input', () => { gradientFieldDensityLabel.textContent = `${parseInt(gradientFieldDensity.value, 10)}`; if (viewMode === '2D') redraw2D(); });
+  }
   if (showGradient3D) showGradient3D.addEventListener('change', () => { updateGradientArrow3D(); });
-  if (gradientScale) gradientScale.addEventListener('input', () => { if (gradientScaleLabel) gradientScaleLabel.textContent = parseFloat(gradientScale.value).toFixed(2); if (viewMode === '2D') redraw2D(); else updateGradientArrow3D(); });
+  if (gradientScale) gradientScale.addEventListener('input', () => { if (gradientScaleLabel) gradientScaleLabel.textContent = parseFloat(gradientScale.value).toFixed(2); if (viewMode === '2D') redraw2D(); else { updateGradientArrow3D(); updateGradientField3D(); } });
+  if (showGradientField3D) showGradientField3D.addEventListener('change', () => { updateGradientField3D(); });
+  if (gradientFieldDensity && gradientFieldDensityLabel) {
+    // ya se actualiza 2D; añadimos actualización en 3D
+    gradientFieldDensity.addEventListener('input', () => { if (viewMode === '3D') updateGradientField3D(); });
+  }
 
   // Ajuste automático de vista al cambiar límites de ejes
   const axisIds = ['xmin','xmax','ymin','ymax','zmin','zmax'];
@@ -1290,13 +1513,19 @@ function wireUI() {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', () => {
-        if (viewMode === '3D') { updateAxesHelpers(); fitViewToBox(); applyClipToGraphs(); }
+        if (viewMode === '3D') { updateAxesHelpers(); fitViewToBox(); applyClipToGraphs(); updateGradientArrow3D(); updateGradientField3D(); }
+        if (viewMode === '2D') { runCalculations(); redraw2D(); }
       });
     }
   });
   if (useFixedColor) useFixedColor.addEventListener('change', () => { if (viewMode === '2D') redraw2D(); });
   if (useCustomWidth) useCustomWidth.addEventListener('change', () => { if (viewMode === '2D') redraw2D(); });
-  if (calcEnabled) calcEnabled.addEventListener('change', () => { runCalculations(); if (viewMode === '2D') redraw2D(); else updateGradientArrow3D(); });
+  if (calcEnabled) calcEnabled.addEventListener('change', () => { runCalculations(); if (viewMode === '2D') redraw2D(); else { updateGradientArrow3D(); updateGradientField3D(); } });
+  if (useSymbolicDerivatives) useSymbolicDerivatives.addEventListener('change', () => { runCalculations(); if (viewMode === '2D') redraw2D(); else updateGradientArrow3D(); });
+  if (derivHScale && derivHScaleLabel) {
+    derivHScaleLabel.textContent = `${parseFloat(derivHScale.value).toFixed(2)}×`;
+    derivHScale.addEventListener('input', () => { derivHScaleLabel.textContent = `${parseFloat(derivHScale.value).toFixed(2)}×`; runCalculations(); if (viewMode === '2D') redraw2D(); else updateGradientArrow3D(); });
+  }
   if (showGrid3D) showGrid3D.addEventListener('change', () => { updateAxesHelpers(); });
   if (showAxes3D) showAxes3D.addEventListener('change', () => { updateAxesHelpers(); });
   const clipToBoxEl = document.getElementById('clipToBox');
@@ -1381,6 +1610,8 @@ function wireUI() {
       // Cálculos y gradiente
       if (calcEnabled) calcEnabled.checked = true;
       if (showGradient2D) showGradient2D.checked = false;
+      if (showGradientField2D) showGradientField2D.checked = false;
+      if (gradientFieldDensity && gradientFieldDensityLabel) { gradientFieldDensity.value = '10'; gradientFieldDensityLabel.textContent = '10'; }
       if (showGradient3D) showGradient3D.checked = false;
       if (gradientScale && gradientScaleLabel) { gradientScale.value = '0.2'; gradientScaleLabel.textContent = '0.20'; }
       // Resolución
@@ -1409,6 +1640,7 @@ function wireUI() {
       updateAxesHelpers();
       runCalculations();
       updateGradientArrow3D();
+      updateGradientField3D();
       if (viewMode === '2D') redraw2D();
     });
   }
@@ -1418,8 +1650,8 @@ function wireUI() {
     if (gradientArrow3D) { try { scene.remove(gradientArrow3D); } catch (_) {} gradientArrow3D = null; }
     if (!(showGradient3D && showGradient3D.checked)) return;
     if (!lastCalc || !lastCalc.grad || !isFinite(lastCalc.grad.fx) || !isFinite(lastCalc.grad.fy) || !isFinite(lastCalc.f0)) return;
-    const x0 = parseFloat(calcX0 ? calcX0.value : '0');
-    const y0 = parseFloat(calcY0 ? calcY0.value : '0');
+    const x0 = lastCalc.point && isFinite(lastCalc.point.x) ? lastCalc.point.x : parseLocaleNumber(calcX0 ? calcX0.value : '0', 0);
+    const y0 = lastCalc.point && isFinite(lastCalc.point.y) ? lastCalc.point.y : parseLocaleNumber(calcY0 ? calcY0.value : '0', 0);
     const dir = new THREE.Vector3(lastCalc.grad.fx, lastCalc.grad.fy, 0);
     if (dir.length() === 0) return;
     dir.normalize();
@@ -1429,8 +1661,77 @@ function wireUI() {
     gradientArrow3D = new THREE.ArrowHelper(dir, origin, length, 0xf59e0b);
     scene.add(gradientArrow3D);
   }
+
+  // Campo de gradiente en 3D (múltiples flechas sobre la superficie z=f(x,y))
+  function updateGradientField3D() {
+    if (gradientField3DGroup) { try { scene.remove(gradientField3DGroup); } catch (_) {} gradientField3DGroup = null; }
+    const el = document.getElementById('showGradientField3D');
+    if (!el || !el.checked) return;
+    const raw = (fnInput.value && fnInput.value.trim().length > 0) ? fnInput.value.trim() : '7*x*y / exp(x^2 + y^2)';
+    let compiled;
+    try { compiled = math.parse(raw).compile(); } catch (_) { return; }
+    const axes = getAxesFromUI();
+    const { xmin, xmax, ymin, ymax } = axes;
+    const paramDefaults = { a: 1, b: 1, c: 1, d: 0, t: 0, v: 1 };
+    const densityVal = parseInt(gradientFieldDensity ? gradientFieldDensity.value : '10', 10);
+    const nx = Math.max(4, densityVal);
+    const ny = Math.max(4, densityVal);
+    const dx = (xmax - xmin) / (nx - 1);
+    const dy = (ymax - ymin) / (ny - 1);
+    const hBase = 1e-3 * Math.max(xmax - xmin, ymax - ymin);
+    const hScaleEl = document.getElementById('derivHScale');
+    const hScale = hScaleEl ? parseFloat(hScaleEl.value) : 1;
+    const h = Math.max(1e-8, hBase * (isFinite(hScale) ? hScale : 1));
+    const domainInfo = buildDomainPredicateFromExpr(raw);
+    gradientField3DGroup = new THREE.Group();
+    const scaleVal = parseFloat(gradientScale ? gradientScale.value : '0.2');
+    const lengthBase = Math.max(1e-6, scaleVal) * Math.max(xmax - xmin, ymax - ymin);
+    for (let iy = 0; iy < ny; iy++) {
+      const y = ymin + iy * dy;
+      for (let ix = 0; ix < nx; ix++) {
+        const x = xmin + ix * dx;
+        try {
+          if (!domainInfo.predicate(x, y, paramDefaults)) continue;
+          const f0 = compiled.evaluate({ x, y, ...paramDefaults });
+          if (!isFinite(f0)) continue;
+          // Diferencias finitas centradas
+          const f_xph = domainInfo.predicate(x + h, y, paramDefaults) ? compiled.evaluate({ x: x + h, y, ...paramDefaults }) : NaN;
+          const f_xmh = domainInfo.predicate(x - h, y, paramDefaults) ? compiled.evaluate({ x: x - h, y, ...paramDefaults }) : NaN;
+          const f_yph = domainInfo.predicate(x, y + h, paramDefaults) ? compiled.evaluate({ x, y: y + h, ...paramDefaults }) : NaN;
+          const f_ymh = domainInfo.predicate(x, y - h, paramDefaults) ? compiled.evaluate({ x, y: y - h, ...paramDefaults }) : NaN;
+          let fx = NaN, fy = NaN;
+          if (isFinite(f_xph) && isFinite(f_xmh)) fx = (f_xph - f_xmh) / (2 * h);
+          if (isFinite(f_yph) && isFinite(f_ymh)) fy = (f_yph - f_ymh) / (2 * h);
+          if (!isFinite(fx) || !isFinite(fy)) continue;
+          const dir = new THREE.Vector3(fx, fy, 0);
+          const norm = dir.length();
+          if (!(norm > 0)) continue;
+          dir.normalize();
+          // Evitar flechas que salgan de la caja
+          const origin = new THREE.Vector3(x, y, f0);
+          const length = lengthBase;
+          const arrow = new THREE.ArrowHelper(dir, origin, length, 0x22c55e);
+          gradientField3DGroup.add(arrow);
+        } catch (_) { /* continuar */ }
+      }
+    }
+    scene.add(gradientField3DGroup);
+  }
 }
 
 /* Bootstrap */
 initScene();
 wireUI();
+  // Modo punto automático: deshabilitar x₀/y₀ cuando está activo
+  const autoPointEl = document.getElementById('autoPoint');
+  if (autoPointEl) {
+    const toggleInputs = () => {
+      const on = !!autoPointEl.checked;
+      const xEl = document.getElementById('calcX0');
+      const yEl = document.getElementById('calcY0');
+      if (xEl) xEl.disabled = on;
+      if (yEl) yEl.disabled = on;
+    };
+    toggleInputs();
+    autoPointEl.addEventListener('change', () => { toggleInputs(); runCalculations(); if (viewMode === '2D') redraw2D(); else updateGradientArrow3D(); });
+  }

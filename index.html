@@ -123,6 +123,12 @@
               <input id="showAxes3D" type="checkbox" checked />
             </div>
           </div>
+          <div class="grid">
+            <div>
+              <label for="autoUpdateGraphs">Actualizar superficies al aplicar límites</label>
+              <input id="autoUpdateGraphs" type="checkbox" checked />
+            </div>
+          </div>
           <button id="applyAxesBtn">Aplicar límites</button>
         </section>
 
@@ -162,22 +168,31 @@
           <h2>Cálculos</h2>
           <div class="grid">
             <div>
-              <label for="calcX0">x₀</label>
-              <input id="calcX0" type="number" step="0.1" value="0" />
-            </div>
-            <div>
-              <label for="calcY0">y₀</label>
-              <input id="calcY0" type="number" step="0.1" value="0" />
+              <label for="autoPoint">Elegir punto automáticamente</label>
+              <input id="autoPoint" type="checkbox" checked />
             </div>
             <div>
               <label for="showGradient">Mostrar gradiente en 2D</label>
               <input id="showGradient" type="checkbox" />
+            </div>
+            <div>
+              <label for="showGradientField2D">Mostrar campo de gradiente en 2D</label>
+              <input id="showGradientField2D" type="checkbox" />
+            </div>
+            <div>
+              <label for="gradientFieldDensity">Densidad de flechas</label>
+              <input id="gradientFieldDensity" type="range" min="5" max="20" step="1" value="10" />
+              <span id="gradientFieldDensityLabel">10</span>
             </div>
           </div>
           <div class="grid">
             <div>
               <label for="showGradient3D">Mostrar gradiente en 3D</label>
               <input id="showGradient3D" type="checkbox" />
+            </div>
+            <div>
+              <label for="showGradientField3D">Mostrar campo de gradiente en 3D</label>
+              <input id="showGradientField3D" type="checkbox" />
             </div>
             <div>
               <label for="gradientScale">Escala flecha</label>
@@ -189,6 +204,17 @@
             <div>
               <label for="calcEnabled">Habilitar cálculos automáticos</label>
               <input id="calcEnabled" type="checkbox" checked />
+            </div>
+          </div>
+          <div class="grid">
+            <div>
+              <label for="useSymbolicDerivatives">Usar derivadas simbólicas (si aplica)</label>
+              <input id="useSymbolicDerivatives" type="checkbox" />
+            </div>
+            <div>
+              <label for="derivHScale">Factor h derivadas</label>
+              <input id="derivHScale" type="range" min="0.1" max="2.0" step="0.1" value="1" />
+              <span id="derivHScaleLabel">1.00×</span>
             </div>
           </div>
           <div id="calcDomainRange" class="calc-block"></div>
@@ -218,14 +244,6 @@
             <div>
               <label for="constraintInput">Restricción g(x,y)=0</label>
               <input id="constraintInput" type="text" placeholder="x + y - 1" />
-            </div>
-            <div>
-              <label for="optimX0">x₀</label>
-              <input id="optimX0" type="number" step="0.1" value="0" />
-            </div>
-            <div>
-              <label for="optimY0">y₀</label>
-              <input id="optimY0" type="number" step="0.1" value="0" />
             </div>
           </div>
           <div class="row">
