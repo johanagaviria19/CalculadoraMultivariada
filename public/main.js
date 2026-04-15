@@ -9,10 +9,7 @@ let axesGroup = null;
 let plotBoxHelper = null;
 let viewMode = '3D';
 let gradientArrow3D = null;
-<<<<<<< HEAD
 // Grupo para campo de gradiente en 3D (múltiples flechas)
-=======
->>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
 let gradientField3DGroup = null;
 
 /* Presets */
@@ -738,16 +735,9 @@ function buildSurface({ exprString, resolution, axes, zclipLow, zclipHigh }) {
 let nextGraphId = 1;
 function addGraph(mesh, label) {
   const id = `g${nextGraphId++}`;
-<<<<<<< HEAD
   try {
     if (!mesh.userData) mesh.userData = {};
     mesh.userData.exprString = label; // almacenar la expresión para reconstruir
-=======
-  // Guardar la expresión original para poder reconstruir la geometría (p.ej., al cambiar resolución)
-  try {
-    mesh.userData = mesh.userData || {};
-    mesh.userData.exprString = label;
->>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
   } catch (_) {}
   graphs.set(id, mesh);
   scene.add(mesh);
@@ -1236,30 +1226,14 @@ function wireUI() {
     if (calcDomainRange) {
       const zMinStr = isFinite(zMin) ? Number(zMin.toFixed(4)) : '—';
       const zMaxStr = isFinite(zMax) ? Number(zMax.toFixed(4)) : '—';
-<<<<<<< HEAD
       const consDesc = domainInfo.description ? `<div><strong>Restricciones (matemáticas):</strong> ${domainInfo.description}</div>` : '';
       calcDomainRange.innerHTML = `
         <div><strong>Dominio (muestrado):</strong> ${valid} / ${total} puntos válidos (${validPct}%)</div>
         ${consDesc}
-=======
-      const procDx = isFinite(dx) ? Number(dx.toFixed(4)) : '—';
-      const procDy = isFinite(dy) ? Number(dy.toFixed(4)) : '—';
-      const domText = `Rectángulo [${Number(xmin)}, ${Number(xmax)}] × [${Number(ymin)}, ${Number(ymax)}]`;
-      const resText = `${nx} × ${ny} (total ${total})`;
-      calcDomainRange.innerHTML = `
-        <div style="margin-bottom:6px"><strong>Procedimiento (muestreo):</strong></div>
-        <div>• Dominio: ${domText}</div>
-        <div>• Resolución: ${resText}</div>
-        <div>• Pasos: Δx = ${procDx}, Δy = ${procDy}</div>
-        <div>• Evaluación: f(x,y) en cada punto; se cuentan válidos si es finito</div>
-        <hr style="opacity:0.4;margin:8px 0" />
-        <div><strong>Dominio (muestreado):</strong> ${valid} / ${total} puntos válidos (${validPct}%)</div>
->>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
         <div><strong>Rango z aprox:</strong> [${zMinStr}, ${zMaxStr}]</div>
       `;
     }
 
-<<<<<<< HEAD
     // Auto-ajuste del dominio si la región válida es significativamente menor
     // Sólo si hay puntos válidos y el cálculo está habilitado
     if (valid > 0 && calcEnabled && calcEnabled.checked) {
@@ -1302,10 +1276,6 @@ function wireUI() {
     const useAuto = autoEl ? !!autoEl.checked : true;
     const x0 = useAuto ? bestX : parseLocaleNumber(calcX0 ? calcX0.value : '0', 0);
     const y0 = useAuto ? bestY : parseLocaleNumber(calcY0 ? calcY0.value : '0', 0);
-=======
-    // Derivadas parciales en (x₀,y₀) por diferencias finitas (con fallback al centro)
-    const { x0, y0 } = getCalcPointOrCenter();
->>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
     const hBase = 1e-3 * Math.max(xmax - xmin, ymax - ymin);
     const hScaleEl = document.getElementById('derivHScale');
     const hScale = hScaleEl ? parseFloat(hScaleEl.value) : 1;
@@ -1603,11 +1573,7 @@ function wireUI() {
     }
     const lwEff = (useCustomWidth && useCustomWidth.checked) ? parseFloat(contourWidth.value) : 1;
     const colorEff = (useFixedColor && useFixedColor.checked) ? contourColor.value : 'gray';
-<<<<<<< HEAD
     drawContours2D({ exprString: fnInput.value, axes, resolution, levelsCount: parseInt(contourLevels.value, 10), lineWidth: lwEff, colorMode: colorEff, gradient: contourGradient.checked, gradientOverlay: overlay, gradientField: fieldCfg });
-=======
-    drawContours2D({ exprString: getFnExprNormalized(), axes, resolution, levelsCount: parseInt(contourLevels.value, 10), lineWidth: lwEff, colorMode: colorEff, gradient: contourGradient.checked, gradientOverlay: overlay });
->>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
   }
   viewSel.addEventListener('change', () => setView(viewSel.value));
 
@@ -1669,7 +1635,6 @@ function wireUI() {
   });
 
   // Eventos del panel Cálculos
-<<<<<<< HEAD
   if (calcX0) {
     calcX0.addEventListener('input', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
     calcX0.addEventListener('change', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
@@ -1678,33 +1643,6 @@ function wireUI() {
     calcY0.addEventListener('input', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
     calcY0.addEventListener('change', () => { const autoEl = document.getElementById('autoPoint'); if (autoEl && autoEl.checked) return; runCalculations(); if (viewMode === '2D') redraw2D(); });
   }
-=======
-  if (calcX0) calcX0.addEventListener('input', () => { runCalculations(); if (viewMode === '2D') redraw2D(); });
-  if (calcY0) calcY0.addEventListener('input', () => { runCalculations(); if (viewMode === '2D') redraw2D(); });
-  // Botón para usar el centro de la caja
-  if (calcUseCenter) calcUseCenter.addEventListener('click', () => {
-    const axes = getAxesFromUI();
-    const cx = (axes.xmin + axes.xmax) / 2;
-    const cy = (axes.ymin + axes.ymax) / 2;
-    if (calcX0) calcX0.value = String(Number(cx.toFixed(6)));
-    if (calcY0) calcY0.value = String(Number(cy.toFixed(6)));
-    runCalculations();
-    if (viewMode === '2D') redraw2D(); else updateGradientArrow3D();
-  });
-  // Validación ligera: si queda vacío/inválido al perder foco, usar centro
-  const ensureValidCalcPoint = (el) => {
-    if (!el) return;
-    el.addEventListener('blur', () => {
-      const { x0, y0 } = getCalcPointOrCenter();
-      if (el === calcX0 && !isFinite(parseFloat(calcX0.value))) calcX0.value = String(Number(x0.toFixed(6)));
-      if (el === calcY0 && !isFinite(parseFloat(calcY0.value))) calcY0.value = String(Number(y0.toFixed(6)));
-      runCalculations();
-      if (viewMode === '2D') redraw2D(); else updateGradientArrow3D();
-    });
-  };
-  ensureValidCalcPoint(calcX0);
-  ensureValidCalcPoint(calcY0);
->>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
   if (showGradient2D) showGradient2D.addEventListener('change', () => { if (viewMode === '2D') redraw2D(); });
   if (showGradientField2D) showGradientField2D.addEventListener('change', () => { if (viewMode === '2D') redraw2D(); });
   if (gradientFieldDensity && gradientFieldDensityLabel) {
@@ -2060,14 +1998,9 @@ function wireUI() {
     if (gradientArrow3D) { try { scene.remove(gradientArrow3D); } catch (_) {} gradientArrow3D = null; }
     if (gradientField3DGroup) { try { scene.remove(gradientField3DGroup); } catch (_) {} gradientField3DGroup = null; }
     if (!(showGradient3D && showGradient3D.checked)) return;
-<<<<<<< HEAD
     if (!lastCalc || !lastCalc.grad || !isFinite(lastCalc.grad.fx) || !isFinite(lastCalc.grad.fy) || !isFinite(lastCalc.f0)) return;
     const x0 = lastCalc.point && isFinite(lastCalc.point.x) ? lastCalc.point.x : parseLocaleNumber(calcX0 ? calcX0.value : '0', 0);
     const y0 = lastCalc.point && isFinite(lastCalc.point.y) ? lastCalc.point.y : parseLocaleNumber(calcY0 ? calcY0.value : '0', 0);
-=======
-    if (!lastCalc || !lastCalc.grad || !isFinite(lastCalc.grad.fx) || !isFinite(lastCalc.grad.fy)) return;
-    const { x0, y0 } = getCalcPointOrCenter();
->>>>>>> b84ca4adfcadfa1f0dfa8a8782d467cff94045a1
     const dir = new THREE.Vector3(lastCalc.grad.fx, lastCalc.grad.fy, 0);
     if (dir.length() === 0) return;
     dir.normalize();
